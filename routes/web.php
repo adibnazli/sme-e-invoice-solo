@@ -11,10 +11,8 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 // Protected Routes (Require Login)
 Route::middleware('auth')->group(function () {
     
-    // Module 5: Owner Dashboard Placeholder
-    Route::get('/dashboard', function () {
-        return view('dashboard');
-    })->name('dashboard');
+    // Module 5: Owner Dashboard
+    Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index'])->name('dashboard');
 
     // Module 4: POS Checkout Placeholder
     Route::get('/pos', [\App\Http\Controllers\PosController::class, 'index'])->name('pos');
