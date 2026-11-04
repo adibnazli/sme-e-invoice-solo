@@ -17,9 +17,8 @@ Route::middleware('auth')->group(function () {
     })->name('dashboard');
 
     // Module 4: POS Checkout Placeholder
-    Route::get('/pos', function () {
-        return view('pos');
-    })->name('pos');
+    Route::get('/pos', [\App\Http\Controllers\PosController::class, 'index'])->name('pos');
+    Route::post('/pos/checkout', [\App\Http\Controllers\PosController::class, 'checkout'])->name('pos.checkout');
 
     // Module 2: Inventory
     Route::get('/products', [\App\Http\Controllers\ProductController::class, 'index'])->name('products.index');

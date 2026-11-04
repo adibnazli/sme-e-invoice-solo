@@ -3,7 +3,7 @@
 @section('content')
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="fw-bold"><i class="bi bi-box-seam me-2"></i> Hardware Inventory</h2>
-    <a href="#" class="btn btn-primary fw-bold">
+    <a href="{{ route('products.create') }}" class="btn btn-primary fw-bold">
         <i class="bi bi-camera-fill me-1"></i> Add Product via AI Scan
     </a>
 </div>
