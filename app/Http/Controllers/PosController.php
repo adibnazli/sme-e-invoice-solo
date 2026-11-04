@@ -59,7 +59,7 @@ class PosController extends Controller
             $order->update(['total_amount' => $totalAmount]);
 
             DB::commit();
-            return redirect()->route('pos')->with('success', 'Payment processed successfully!');
+            return redirect()->route('invoice.show', $order->id)->with('success', 'Payment processed successfully!');
 
         } catch (\Exception $e) {
             DB::rollBack();

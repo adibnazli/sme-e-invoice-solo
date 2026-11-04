@@ -20,6 +20,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/pos', [\App\Http\Controllers\PosController::class, 'index'])->name('pos');
     Route::post('/pos/checkout', [\App\Http\Controllers\PosController::class, 'checkout'])->name('pos.checkout');
 
+    Route::get('/invoice/{order}', [\App\Http\Controllers\InvoiceController::class, 'show'])->name('invoice.show');
+
     // Module 2: Inventory
     Route::get('/products', [\App\Http\Controllers\ProductController::class, 'index'])->name('products.index');
     Route::post('/products/{product}/archive', [\App\Http\Controllers\ProductController::class, 'archive'])->name('products.archive');
