@@ -17,6 +17,15 @@
 <div class="card shadow-sm border-0 mb-4 bg-light">
     <div class="card-body">
         <h5 class="fw-bold text-primary mb-3"><i class="bi bi-magic me-2"></i> Gemini Vision Auto-Fill</h5>
+        @if ($errors->any())
+            <div class="alert alert-danger fw-bold shadow-sm">
+                <ul class="mb-0">
+                    @foreach ($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
         <form action="{{ route('products.scan') }}" method="POST" enctype="multipart/form-data" class="d-flex align-items-center">
             @csrf
             <input type="file" name="hardware_image" class="form-control me-3" accept="image/*" required style="max-width: 400px;">
@@ -30,7 +39,7 @@
 
 <div class="card shadow-sm border-0">
     <div class="card-body p-4">
-        <form action="{{ route('products.store') }}" method="POST">
+        <form action="{{ route('products.store') }}" method="POST" enctype="multipart/form-data">
             @csrf
             <div class="row mb-3">
                 <div class="col-md-6">
@@ -40,6 +49,11 @@
                 <div class="col-md-3">
                     <label class="form-label fw-bold">Category</label>
                     <input type="text" name="category" class="form-control" value="{{ old('category', $ai['category'] ?? '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Product Image (Optional)</label>
+                    <input type="file" name="image" class="form-control" accept="image/*">
+                    <div class="form-text">Accepted formats: JPG, PNG, WEBP (Max 2MB)</div>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label fw-bold">SKU</label>
@@ -56,22 +70,58 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label fw-bold">Supplier Cost (RM)</label>
-                    <input type="number" step="0.01" name="supplier_cost_price" class="form-control" value="{{ old('supplier_cost_price') }}" required>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label fw-bold mb-0">Description (Optional)</label>
+                        <button type="button" class="btn btn-sm btn-outline-primary fw-bold" id="ai-btn" onclick="generateDesc()">
+                            <i class="bi bi-stars"></i> Auto-Fill AI
+                        </button>
+                    </div>
+                    <textarea name="description" id="desc_box" class="form-control" rows="3">{{ old('description') }}</textarea>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label fw-bold">Retail Price (RM)</label>
-                    <input type="number" step="0.01" name="retail_selling_price" class="form-control" value="{{ old('retail_selling_price') }}" required>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label fw-bold">Supplier Cost Price (RM)</label>
+                        <input type="number" step="0.01" name="supplier_cost_price" class="form-control" required value="{{ old('supplier_cost_price') }}">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label fw-bold">Retail Selling Price (RM)</label>
+                        <input type="number" step="0.01" name="retail_selling_price" class="form-control" required value="{{ old('retail_selling_price') }}">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label fw-bold">Initial Stock</label>
+                        <input type="number" name="stock_quantity" class="form-control" required value="{{ old('stock_quantity') }}">
+                    </div>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label fw-bold">Initial Stock</label>
-                    <input type="number" name="stock_quantity" class="form-control" value="{{ old('stock_quantity', 0) }}" required>
-                </div>
-            </div>
 
             <button type="submit" class="btn btn-success btn-lg px-5 fw-bold">Save Product</button>
         </form>
     </div>
 </div>
+
+<script>
+async function generateDesc() {
+    let name = document.querySelector('input[name="name"]').value;
+    if (!name) return alert('Please enter a product name first.');
+    
+    let btn = document.getElementById('ai-btn');
+    let originalText = btn.innerHTML;
+    btn.innerHTML = 'Generating...';
+    btn.disabled = true;
+    
+    try {
+        let res = await fetch(`/generate-description?name=${encodeURIComponent(name)}`);
+        let data = await res.json();
+        
+        if (data.status === 'success') {
+            document.getElementById('desc_box').value = data.description;
+        }
+    } catch (e) {
+        alert('Failed to connect to Gemini AI.');
+    }
+    
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+}
+</script>
 @endsection

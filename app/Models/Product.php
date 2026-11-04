@@ -10,9 +10,19 @@ class Product extends Model
     use HasFactory;
 
     protected $fillable = [
-        'sku', 'name', 'category', 'description', 'image_url',
-        'unit_type', 'lhdn_class_code', 'supplier_cost_price',
-        'retail_selling_price', 'stock_quantity', 'low_stock_threshold', 'status'
+        'sku',
+        'name',
+        'category',
+        'description',
+        'image_url',
+        'unit_type',
+        'lhdn_class_code',
+        'supplier_cost_price',
+        'retail_selling_price',
+        'stock_quantity',
+        'low_stock_threshold',
+        'status',
+        'image_path'
     ];
 
     // Helper to format currency for the views

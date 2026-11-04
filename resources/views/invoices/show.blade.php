@@ -18,6 +18,13 @@
                     <div><strong>Order ID:</strong> #{{ str_pad($order->id, 6, '0', STR_PAD_LEFT) }}</div>
                     <div><strong>Date:</strong> {{ $order->created_at->format('d M Y, h:i A') }}</div>
                     <div><strong>Cashier:</strong> {{ $order->user->name }}</div>
+                    
+                    @if($order->customer)
+                        <div class="mt-3 p-2 bg-light border rounded text-end d-inline-block text-start">
+                            <div><strong>Customer:</strong> {{ $order->customer->name }}</div>
+                            <div class="text-success fw-bold">Loyalty Points Earned: +{{ floor($order->total_amount / 10) }}</div>
+                        </div>
+                    @endif
                 </div>
             </div>
 

@@ -92,20 +92,60 @@ class ProductController extends Controller
         return back()->with('error', 'Google API Error: ' . $response->json('error.message') . ' || AVAILABLE MODELS FOR YOUR KEY: ' . $availableModels);
     }
 
+    public function generateDescription(Request $request)
+    {
+        $name = $request->query('name');
+        $apiKey = env('GEMINI_API_KEY');
+        $endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=" . $apiKey;
+
+        $response = \Illuminate\Support\Facades\Http::withoutVerifying()
+            ->post($endpoint, [
+                'contents' => [['parts' => [['text' => "Write a concise, 2-sentence professional product description for a hardware store item named: " . $name]]]]
+            ]);
+
+        if ($response->successful()) {
+            return response()->json([
+                'status' => 'success',
+                'description' => $response->json('candidates.0.content.parts.0.text')
+            ]);
+        }
+
+        return response()->json(['status' => 'error'], 500);
+    }
+
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'sku' => 'required|unique:products,sku',
-            'name' => 'required|string|max:150',
-            'category' => 'required|string|max:100',
-            'unit_type' => 'required|in:PIECE,BAG,KG,METER,BOX,TIN,ROLL,SET',
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'sku' => 'required|string|unique:products',
             'supplier_cost_price' => 'required|numeric|min:0',
-            'retail_selling_price' => 'required|numeric|gte:supplier_cost_price',
+            'retail_selling_price' => 'required|numeric|min:0',
             'stock_quantity' => 'required|integer|min:0',
+            'category' => 'required|string',
+            'description' => 'nullable|string',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048'
         ]);
 
-        Product::create($validated);
+        $imagePath = null;
+        if ($request->hasFile('image')) {
+            $imagePath = $request->file('image')->store('products', 'public');
+        }
 
-        return redirect()->route('products.index')->with('success', 'Hardware product added successfully.');
+        Product::create([
+            'name' => $request->name,
+            'sku' => $request->sku,
+            'supplier_cost_price' => $request->supplier_cost_price,
+            'retail_selling_price' => $request->retail_selling_price,
+            'stock_quantity' => $request->stock_quantity,
+            'category' => $request->category,
+            'description' => $request->description,
+            'image_path' => $imagePath,
+            'status' => 'ACTIVE',
+            'unit_type' => 'PIECE',
+            'lhdn_class_code' => '022', 
+            'low_stock_threshold' => 5,
+        ]);
+
+        return redirect()->route('products.index')->with('success', 'Product added successfully.');
     }
 }

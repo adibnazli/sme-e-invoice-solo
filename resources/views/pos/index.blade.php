@@ -14,12 +14,31 @@
 
         <div class="row g-3 overflow-auto flex-grow-1 pb-3">
             @foreach($products as $product)
-            <div class="col-md-4">
-                <div class="card h-100 shadow-sm border-0 cursor-pointer" style="cursor: pointer;" onclick="addToCart({{ $product->id }}, '{{ addslashes($product->name) }}', {{ $product->retail_selling_price }})">
-                    <div class="card-body text-center d-flex flex-column justify-content-center">
-                        <h6 class="fw-bold mb-1">{{ $product->name }}</h6>
-                        <small class="text-muted d-block mb-2">{{ $product->sku }}</small>
-                        <span class="badge bg-success fs-6 mt-auto">{{ $product->formatted_retail_price }}</span>
+            <div class="col-md-4 col-sm-6 mb-3">
+                <div class="card h-100 border-0 shadow-sm product-card" onclick="addToCart({{ $product->id }}, '{{ $product->name }}', {{ $product->retail_selling_price }})" style="cursor: pointer;">
+                    <!-- Image Container -->
+                    <div class="position-relative" style="height: 140px; background-color: #f8fafc; border-radius: 16px 16px 0 0; overflow: hidden;">
+                        @if($product->image_path)
+                            <img src="{{ asset('storage/' . $product->image_path) }}" alt="{{ $product->name }}" style="width: 100%; height: 100%; object-fit: cover;">
+                        @else
+                            <!-- Fallback if no image is uploaded -->
+                            <div class="d-flex align-items-center justify-content-center h-100">
+                                <i class="bi bi-box-seam text-secondary" style="font-size: 3rem; opacity: 0.3;"></i>
+                            </div>
+                        @endif
+                        
+                        <!-- Stock Badge overlay -->
+                        <span class="position-absolute top-0 end-0 badge {{ $product->stock_quantity > 5 ? 'bg-success' : 'bg-danger' }} m-2 shadow-sm">
+                            {{ $product->stock }} in stock
+                        </span>
+                    </div>
+
+                    <div class="card-body p-3">
+                        <h6 class="card-title fw-bold mb-1 text-truncate">{{ $product->name }}</h6>
+                        <div class="d-flex justify-content-between align-items-center mt-2">
+                            <small class="text-muted">{{ $product->sku }}</small>
+                            <span class="text-primary fw-bold fs-6">RM {{ number_format($product->price, 2) }}</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -43,6 +62,12 @@
             <form action="{{ route('pos.checkout') }}" method="POST">
                 @csrf
                 <input type="hidden" name="cart_data" id="cart_data_input">
+                <select name="customer_id" class="form-select mb-3">
+                    <option value="">Walk-in Customer (No Points)</option>
+                    @foreach($customers as $customer)
+                        <option value="{{ $customer->id }}">{{ $customer->name }} ({{ $customer->phone }})</option>
+                    @endforeach
+                </select>
                 <button type="submit" class="btn btn-success w-100 fw-bold py-2 mb-2">Process Payment</button>
             </form>
             <button class="btn btn-outline-danger w-100 fw-bold" onclick="clearCart()">Clear Cart</button>
