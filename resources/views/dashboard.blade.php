@@ -11,7 +11,7 @@
                     <div class="bg-primary rounded-circle p-2 me-3 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
                         <i class="bi bi-robot fs-5 text-white"></i>
                     </div>
-                    <h5 class="mb-0 fw-bold">Gemini AI Stock Advisor</h5>
+                    <h5 class="mb-0 fw-bold">Groq AI Predictive Insights</h5>
                 </div>
                 
                 <div id="ai-insight-container" style="min-height: 80px;">
@@ -102,10 +102,7 @@ document.addEventListener("DOMContentLoaded", function() {
         .then(data => {
             const container = document.getElementById('ai-insight-container');
             if(data.status === 'success') {
-                // Split paragraphs and style them
-                let paragraphs = data.insight.split('\n\n').filter(p => p.trim() !== '');
-                let formattedHtml = paragraphs.map(p => `<p class="mb-2" style="font-size: 0.95rem; color: #cbd5e1;"><i class="bi bi-check2-circle text-success me-2"></i> ${p}</p>`).join('');
-                container.innerHTML = formattedHtml;
+                container.innerHTML = data.insights;
             } else {
                 container.innerHTML = `<p class="text-danger"><i class="bi bi-exclamation-triangle me-2"></i> ${data.message}</p>`;
             }

@@ -94,23 +94,72 @@ class ProductController extends Controller
 
     public function generateDescription(Request $request)
     {
-        $name = $request->query('name');
-        $apiKey = env('GEMINI_API_KEY');
-        $endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=" . $apiKey;
+        try {
+            $name = $request->query('name');
+            $apiKey = env('GROQ_API_KEY');
+            
+            if (empty($apiKey)) {
+                return response()->json(['status' => 'error', 'message' => 'Missing Groq API Key in .env'], 500);
+            }
 
-        $response = \Illuminate\Support\Facades\Http::withoutVerifying()
-            ->post($endpoint, [
-                'contents' => [['parts' => [['text' => "Write a concise, 2-sentence professional product description for a hardware store item named: " . $name]]]]
+            $endpoint = "https://api.groq.com/openai/v1/chat/completions";
+
+            $payload = json_encode([
+                'model' => 'openai/gpt-oss-20b',
+                'messages' => [
+                    ['role' => 'system', 'content' => 'You are a professional retail copywriter for a hardware store. Keep it concise.'],
+                    ['role' => 'user', 'content' => "Write a concise, 2-sentence professional product description for a hardware store item named: " . $name]
+                ],
+                'temperature' => 0.7,
+                'max_tokens' => 150
             ]);
 
-        if ($response->successful()) {
-            return response()->json([
-                'status' => 'success',
-                'description' => $response->json('candidates.0.content.parts.0.text')
+            $ch = curl_init($endpoint);
+            
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $apiKey,
+                'User-Agent: SME-Hardware-Hub/1.0',
+                'Accept: application/json',
+                'Connection: close'
             ]);
+            
+            // Network stability settings for your hotspot / UTeM Wi-Fi
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+            curl_setopt($ch, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+            curl_setopt($ch, CURLOPT_FORBID_REUSE, true);
+            curl_setopt($ch, CURLOPT_FRESH_CONNECT, true);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            
+            curl_close($ch);
+
+            if ($curlError) {
+                return response()->json(['status' => 'error', 'message' => 'Network Drop: ' . $curlError], 500);
+            }
+
+            $data = json_decode($response, true);
+
+            if ($httpCode >= 200 && $httpCode < 300) {
+                return response()->json([
+                    'status' => 'success',
+                    'description' => $data['choices'][0]['message']['content'] ?? 'No description generated.'
+                ]);
+            }
+
+            return response()->json(['status' => 'error', 'message' => 'Groq Error: ' . ($data['error']['message'] ?? json_encode($data))], 500);
+
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => 'PHP Error: ' . $e->getMessage()], 500);
         }
-
-        return response()->json(['status' => 'error'], 500);
     }
 
     public function store(Request $request)

@@ -111,13 +111,21 @@ async function generateDesc() {
     
     try {
         let res = await fetch(`/generate-description?name=${encodeURIComponent(name)}`);
+        
+        // If Laravel throws a 500 HTML page anyway, this catches it
+        if (!res.ok && res.headers.get('content-type').indexOf('application/json') === -1) {
+            throw new Error("Server returned HTML instead of JSON. Check terminal.");
+        }
+
         let data = await res.json();
         
         if (data.status === 'success') {
             document.getElementById('desc_box').value = data.description;
+        } else {
+            alert(data.message); // This will print the exact PHP/cURL error!
         }
     } catch (e) {
-        alert('Failed to connect to Gemini AI.');
+        alert('Critical Crash: ' + e.message);
     }
     
     btn.innerHTML = originalText;
