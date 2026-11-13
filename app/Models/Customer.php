@@ -13,6 +13,9 @@ class Customer extends Model
         'name',
         'phone',
         'email',
+        'customer_type',
+        'credit_limit',
+        'current_debt',
         'loyalty_points'
     ];
 

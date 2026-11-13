@@ -11,8 +11,16 @@ class Order extends Model
 
     protected $fillable = [
         'user_id',
+        'customer_id',
         'total_amount',
-        'payment_method'
+        'payment_method',
+        'payment_status',
+        'delivery_type',
+        'delivery_address',
+        'invoice_type',
+        'lhdn_status',
+        'lhdn_uin',
+        'raw_ai_prompt'
     ];
 
     public function items()
