@@ -11,7 +11,6 @@ class ProductController extends Controller
 {
     public function index()
     {
-        /** @var \App\Models\User $user */
         $user = Auth::user();
 
         if ($user->role !== 'OWNER') {
@@ -52,8 +51,7 @@ class ProductController extends Controller
             return back()->with('error', 'System Error: Gemini API Key is missing.');
         }
 
-        // Switch to the stable v1 endpoint
-        $url = "https://generativelanguage.googleapis.com/v1/models/gemini-3.5-flash:generateContent?key={$apiKey}";
+        $url = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={$apiKey}";
 
         $payload = [
             'contents' => [
@@ -71,95 +69,22 @@ class ProductController extends Controller
             ]
         ];
 
-        $response = Http::withHeaders(['Content-Type' => 'application/json'])->post($url, $payload);
+        $response = Http::withoutVerifying()->withHeaders(['Content-Type' => 'application/json'])->post($url, $payload);
         
         if ($response->successful()) {
             $rawText = $response->json('candidates.0.content.parts.0.text');
-            
-            // Clean up Markdown if Gemini includes it
             $cleanJson = trim(str_replace(['```json', '```'], '', $rawText));
             $result = json_decode($cleanJson, true);
             
             return back()->with('ai_data', $result)->with('success', 'Image scanned successfully!');
         }
 
-        // If it fails, interrogate Google for the valid model list
-        $diagnostic = Http::get("https://generativelanguage.googleapis.com/v1/models?key={$apiKey}");
+        $diagnostic = Http::withoutVerifying()->get("https://generativelanguage.googleapis.com/v1/models?key={$apiKey}");
         $availableModels = collect($diagnostic->json('models'))->pluck('name')->filter(function($name) {
             return str_contains($name, 'gemini');
         })->implode(', ');
 
-        return back()->with('error', 'Google API Error: ' . $response->json('error.message') . ' || AVAILABLE MODELS FOR YOUR KEY: ' . $availableModels);
-    }
-
-    public function generateDescription(Request $request)
-    {
-        try {
-            $name = $request->query('name');
-            $apiKey = env('GROQ_API_KEY');
-            
-            if (empty($apiKey)) {
-                return response()->json(['status' => 'error', 'message' => 'Missing Groq API Key in .env'], 500);
-            }
-
-            $endpoint = "https://api.groq.com/openai/v1/chat/completions";
-
-            $payload = json_encode([
-                'model' => 'openai/gpt-oss-20b',
-                'messages' => [
-                    ['role' => 'system', 'content' => 'You are a professional retail copywriter for a hardware store. Keep it concise.'],
-                    ['role' => 'user', 'content' => "Write a concise, 2-sentence professional product description for a hardware store item named: " . $name]
-                ],
-                'temperature' => 0.7,
-                'max_tokens' => 150
-            ]);
-
-            $ch = curl_init($endpoint);
-            
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Content-Type: application/json',
-                'Authorization: Bearer ' . $apiKey,
-                'User-Agent: SME-Hardware-Hub/1.0',
-                'Accept: application/json',
-                'Connection: close'
-            ]);
-            
-            // Network stability settings for your hotspot / UTeM Wi-Fi
-            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-            curl_setopt($ch, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
-            curl_setopt($ch, CURLOPT_FORBID_REUSE, true);
-            curl_setopt($ch, CURLOPT_FRESH_CONNECT, true);
-            
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $curlError = curl_error($ch);
-            
-            curl_close($ch);
-
-            if ($curlError) {
-                return response()->json(['status' => 'error', 'message' => 'Network Drop: ' . $curlError], 500);
-            }
-
-            $data = json_decode($response, true);
-
-            if ($httpCode >= 200 && $httpCode < 300) {
-                return response()->json([
-                    'status' => 'success',
-                    'description' => $data['choices'][0]['message']['content'] ?? 'No description generated.'
-                ]);
-            }
-
-            return response()->json(['status' => 'error', 'message' => 'Groq Error: ' . ($data['error']['message'] ?? json_encode($data))], 500);
-
-        } catch (\Exception $e) {
-            return response()->json(['status' => 'error', 'message' => 'PHP Error: ' . $e->getMessage()], 500);
-        }
+        return back()->with('error', 'Google API Error: ' . $response->json('error.message') . ' || AVAILABLE MODELS: ' . $availableModels);
     }
 
     public function store(Request $request)
@@ -167,10 +92,16 @@ class ProductController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'sku' => 'required|string|unique:products',
+            'category' => 'required|string',
+            'unit_type' => 'required|in:PIECE,BAG,KG,METER,BOX,TIN,ROLL,SET',
+            'bulk_unit_type' => 'nullable|string|max:20',
+            'bulk_conversion_rate' => 'nullable|integer|min:2',
             'supplier_cost_price' => 'required|numeric|min:0',
             'retail_selling_price' => 'required|numeric|min:0',
+            'bulk_selling_price' => 'nullable|numeric|min:0',
             'stock_quantity' => 'required|integer|min:0',
-            'category' => 'required|string',
+            'low_stock_threshold' => 'required|integer|min:1',
+            'lhdn_class_code' => 'required|string|max:10',
             'description' => 'nullable|string',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048'
         ]);
@@ -183,18 +114,64 @@ class ProductController extends Controller
         Product::create([
             'name' => $request->name,
             'sku' => $request->sku,
+            'category' => $request->category,
+            'unit_type' => $request->unit_type,
+            'bulk_unit_type' => $request->filled('bulk_unit_type') ? strtoupper($request->bulk_unit_type) : null,
+            'bulk_conversion_rate' => $request->bulk_conversion_rate,
             'supplier_cost_price' => $request->supplier_cost_price,
             'retail_selling_price' => $request->retail_selling_price,
+            'bulk_selling_price' => $request->bulk_selling_price,
             'stock_quantity' => $request->stock_quantity,
-            'category' => $request->category,
+            'low_stock_threshold' => $request->low_stock_threshold,
+            'lhdn_class_code' => $request->lhdn_class_code,
             'description' => $request->description,
             'image_path' => $imagePath,
             'status' => 'ACTIVE',
-            'unit_type' => 'PIECE',
-            'lhdn_class_code' => '022', 
-            'low_stock_threshold' => 5,
         ]);
 
-        return redirect()->route('products.index')->with('success', 'Product added successfully.');
+        return redirect()->route('products.index')->with('success', 'Product added with SME unit & margin protection rules.');
+    }
+
+    public function restock(Request $request, Product $product)
+    {
+        $request->validate([
+            'added_quantity' => 'required|integer|min:1',
+            'new_supplier_cost' => 'required|numeric|min:0.01',
+            'auto_adjust_retail' => 'nullable|boolean'
+        ]);
+
+        $oldCost = (float) $product->supplier_cost_price;
+        $newCost = (float) $request->new_supplier_cost;
+        $currentRetail = (float) $product->retail_selling_price;
+        $addedQty = (int) $request->added_quantity;
+
+        $newMarginPercent = (($currentRetail - $newCost) / $newCost) * 100;
+        $warningMessage = null;
+
+        if ($newCost > $oldCost && $newMarginPercent < 15) {
+            $recommendedRetail = round($newCost * 1.20, 2);
+
+            if ($request->boolean('auto_adjust_retail')) {
+                $currentRetail = $recommendedRetail;
+                $warningMessage = "Supplier cost rose from RM " . number_format($oldCost, 2) . " to RM " . number_format($newCost, 2) . ". Retail price was automatically bumped to RM " . number_format($recommendedRetail, 2) . " to protect a 20% margin.";
+            } else {
+                $warningMessage = "MARGIN ALERT: Supplier cost rose to RM " . number_format($newCost, 2) . "! Your current retail price (RM " . number_format($currentRetail, 2) . ") leaves only a " . round($newMarginPercent, 1) . "% margin. Recommended new retail price: RM " . number_format($recommendedRetail, 2) . ".";
+            }
+        }
+
+        $product->update([
+            'stock_quantity' => $product->stock_quantity + $addedQty,
+            'supplier_cost_price' => $newCost,
+            'retail_selling_price' => $currentRetail
+        ]);
+
+        $redirect = redirect()->route('products.index')
+            ->with('success', "GRN Restock Complete: +{$addedQty} {$product->unit_type} added to {$product->name}.");
+
+        if ($warningMessage) {
+            $redirect->with('margin_warning', $warningMessage);
+        }
+
+        return $redirect;
     }
 }

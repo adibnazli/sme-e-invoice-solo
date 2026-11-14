@@ -2,7 +2,7 @@
 
 @section('content')
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2 class="fw-bold"><i class="bi bi-plus-square me-2"></i> Add New Product</h2>
+    <h2 class="fw-bold"><i class="bi bi-plus-square me-2"></i> Add New Hardware SKU</h2>
     <a href="{{ route('products.index') }}" class="btn btn-outline-secondary fw-bold">Cancel</a>
 </div>
 
@@ -13,10 +13,9 @@
     <div class="alert alert-danger">{{ session('error') }}</div>
 @endif
 
-<!-- AI Scanner Section -->
 <div class="card shadow-sm border-0 mb-4 bg-light">
     <div class="card-body">
-        <h5 class="fw-bold text-primary mb-3"><i class="bi bi-magic me-2"></i> Gemini Vision Auto-Fill</h5>
+        <h5 class="fw-bold text-primary mb-3"><i class="bi bi-camera me-2"></i> Gemini Vision SKU Scanner</h5>
         @if ($errors->any())
             <div class="alert alert-danger fw-bold shadow-sm">
                 <ul class="mb-0">
@@ -29,107 +28,95 @@
         <form action="{{ route('products.scan') }}" method="POST" enctype="multipart/form-data" class="d-flex align-items-center">
             @csrf
             <input type="file" name="hardware_image" class="form-control me-3" accept="image/*" required style="max-width: 400px;">
-            <button type="submit" class="btn btn-primary fw-bold">Scan & Auto-Fill</button>
+            <button type="submit" class="btn btn-primary fw-bold">Scan Item & Auto-Fill</button>
         </form>
     </div>
 </div>
 
-<!-- Product Details Form -->
 @php $ai = session('ai_data', []); @endphp
 
 <div class="card shadow-sm border-0">
     <div class="card-body p-4">
         <form action="{{ route('products.store') }}" method="POST" enctype="multipart/form-data">
             @csrf
+            <h5 class="fw-bold border-bottom pb-2 mb-3">1. Core SKU Identification</h5>
             <div class="row mb-3">
-                <div class="col-md-6">
+                <div class="col-md-5">
                     <label class="form-label fw-bold">Product Name</label>
-                    <input type="text" name="name" class="form-control" value="{{ old('name', $ai['name'] ?? '') }}" required>
+                    <input type="text" name="name" class="form-control" value="{{ old('name', $ai['name'] ?? '') }}" placeholder="e.g. YTL Castle Cement 50kg" required>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label fw-bold">Category</label>
-                    <input type="text" name="category" class="form-control" value="{{ old('category', $ai['category'] ?? '') }}" required>
+                    <input type="text" name="category" class="form-control" value="{{ old('category', $ai['category'] ?? 'General Hardware') }}" required>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Product Image (Optional)</label>
-                    <input type="file" name="image" class="form-control" accept="image/*">
-                    <div class="form-text">Accepted formats: JPG, PNG, WEBP (Max 2MB)</div>
+                <div class="col-md-2">
+                    <label class="form-label fw-bold">SKU Code</label>
+                    <input type="text" name="sku" class="form-control" value="{{ old('sku', $ai['sku'] ?? '') }}" placeholder="HW-001" required>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label fw-bold">SKU</label>
-                    <input type="text" name="sku" class="form-control" value="{{ old('sku', $ai['sku'] ?? '') }}" required>
+                <div class="col-md-2">
+                    <label class="form-label fw-bold">LHDN Class Code</label>
+                    <input type="text" name="lhdn_class_code" class="form-control" value="{{ old('lhdn_class_code', '022') }}" required>
                 </div>
             </div>
 
-            <div class="row mb-4">
+            <h5 class="fw-bold border-bottom pb-2 mb-3 mt-4">2. Pricing, Cost & Floor-Margin Setup</h5>
+            <div class="row mb-3">
                 <div class="col-md-3">
-                    <label class="form-label fw-bold">Unit Type</label>
+                    <label class="form-label fw-bold">Base Unit Type</label>
                     <select name="unit_type" class="form-select" required>
                         @foreach(['PIECE', 'BAG', 'KG', 'METER', 'BOX', 'TIN', 'ROLL', 'SET'] as $unit)
                             <option value="{{ $unit }}" {{ old('unit_type', $ai['unit_type'] ?? '') == $unit ? 'selected' : '' }}>{{ $unit }}</option>
                         @endforeach
                     </select>
                 </div>
-                <div class="mb-3">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <label class="form-label fw-bold mb-0">Description (Optional)</label>
-                        <button type="button" class="btn btn-sm btn-outline-primary fw-bold" id="ai-btn" onclick="generateDesc()">
-                            <i class="bi bi-stars"></i> Auto-Fill AI
-                        </button>
-                    </div>
-                    <textarea name="description" id="desc_box" class="form-control" rows="3">{{ old('description') }}</textarea>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Supplier Cost Price (RM)</label>
+                    <input type="number" step="0.01" name="supplier_cost_price" class="form-control" required value="{{ old('supplier_cost_price') }}">
+                    <div class="form-text text-danger">POS floor lock = Cost + 8%</div>
                 </div>
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label fw-bold">Supplier Cost Price (RM)</label>
-                        <input type="number" step="0.01" name="supplier_cost_price" class="form-control" required value="{{ old('supplier_cost_price') }}">
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label fw-bold">Retail Selling Price (RM)</label>
-                        <input type="number" step="0.01" name="retail_selling_price" class="form-control" required value="{{ old('retail_selling_price') }}">
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label fw-bold">Initial Stock</label>
-                        <input type="number" name="stock_quantity" class="form-control" required value="{{ old('stock_quantity') }}">
-                    </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Retail Selling Price (RM)</label>
+                    <input type="number" step="0.01" name="retail_selling_price" class="form-control" required value="{{ old('retail_selling_price') }}">
                 </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Initial Base Stock</label>
+                    <input type="number" name="stock_quantity" class="form-control" required value="{{ old('stock_quantity', 0) }}">
+                </div>
+            </div>
 
-            <button type="submit" class="btn btn-success btn-lg px-5 fw-bold">Save Product</button>
+            <h5 class="fw-bold border-bottom pb-2 mb-3 mt-4">3. Pecah Pukal (Bulk / Loose Conversion — Optional)</h5>
+            <div class="row mb-3 bg-light p-3 rounded">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Bulk Pack Unit Name</label>
+                    <input type="text" name="bulk_unit_type" class="form-control" value="{{ old('bulk_unit_type') }}" placeholder="e.g. BOX, ROLL, CARTON, PALLET">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Base Units per Bulk Pack</label>
+                    <input type="number" name="bulk_conversion_rate" class="form-control" value="{{ old('bulk_conversion_rate') }}" placeholder="e.g. 50 (1 Box = 50 Pieces)">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Bulk Pack Selling Price (RM)</label>
+                    <input type="number" step="0.01" name="bulk_selling_price" class="form-control" value="{{ old('bulk_selling_price') }}" placeholder="e.g. 110.00">
+                </div>
+            </div>
+
+            <div class="row mb-4 mt-3">
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Low Stock Alert Threshold</label>
+                    <input type="number" name="low_stock_threshold" class="form-control" value="{{ old('low_stock_threshold', 10) }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Product Image (Optional)</label>
+                    <input type="file" name="image" class="form-control" accept="image/*">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label fw-bold">Internal Notes / Specs (Optional)</label>
+                    <input type="text" name="description" class="form-control" value="{{ old('description') }}" placeholder="Grade, thickness, supplier contact...">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-success btn-lg px-5 fw-bold">Save Hardware SKU</button>
         </form>
     </div>
 </div>
-
-<script>
-async function generateDesc() {
-    let name = document.querySelector('input[name="name"]').value;
-    if (!name) return alert('Please enter a product name first.');
-    
-    let btn = document.getElementById('ai-btn');
-    let originalText = btn.innerHTML;
-    btn.innerHTML = 'Generating...';
-    btn.disabled = true;
-    
-    try {
-        let res = await fetch(`/generate-description?name=${encodeURIComponent(name)}`);
-        
-        // If Laravel throws a 500 HTML page anyway, this catches it
-        if (!res.ok && res.headers.get('content-type').indexOf('application/json') === -1) {
-            throw new Error("Server returned HTML instead of JSON. Check terminal.");
-        }
-
-        let data = await res.json();
-        
-        if (data.status === 'success') {
-            document.getElementById('desc_box').value = data.description;
-        } else {
-            alert(data.message); // This will print the exact PHP/cURL error!
-        }
-    } catch (e) {
-        alert('Critical Crash: ' + e.message);
-    }
-    
-    btn.innerHTML = originalText;
-    btn.disabled = false;
-}
-</script>
 @endsection

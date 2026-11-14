@@ -3,9 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\Customer;
+use App\Models\ShopExpense;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
@@ -14,12 +19,142 @@ class DashboardController extends Controller
         $todayRevenue = Order::whereDate('created_at', Carbon::today())->sum('total_amount');
         $totalRevenue = Order::sum('total_amount');
         $todayOrders = Order::whereDate('created_at', Carbon::today())->count();
-        
+
+        $totalCogs = OrderItem::select(DB::raw('SUM(quantity * recorded_cost_price) as total_cogs'))->value('total_cogs') ?? 0;
+        $totalExpenses = ShopExpense::sum('amount');
+        $grossProfit = $totalRevenue - $totalCogs;
+        $netProfit = $grossProfit - $totalExpenses;
+
+        $totalHutang = Customer::sum('current_debt');
+        $debtorsCount = Customer::where('current_debt', '>', 0)->count();
+
+        $pendingLhdnCount = Order::where('lhdn_status', 'PENDING_CONSOLIDATION')->count();
+        $pendingLhdnAmount = Order::where('lhdn_status', 'PENDING_CONSOLIDATION')->sum('total_amount');
+        $validatedLhdnCount = Order::whereIn('lhdn_status', ['VALIDATED', 'CONSOLIDATED'])->count();
+
         $lowStockProducts = Product::whereColumn('stock_quantity', '<=', 'low_stock_threshold')
             ->where('status', 'ACTIVE')
             ->get();
 
-        return view('dashboard', compact('todayRevenue', 'totalRevenue', 'todayOrders', 'lowStockProducts'));
+        $recentExpenses = ShopExpense::with('user')
+            ->orderBy('expense_date', 'desc')
+            ->latest()
+            ->take(8)
+            ->get();
+
+        return view('dashboard', compact(
+            'todayRevenue',
+            'totalRevenue',
+            'todayOrders',
+            'totalCogs',
+            'totalExpenses',
+            'grossProfit',
+            'netProfit',
+            'totalHutang',
+            'debtorsCount',
+            'pendingLhdnCount',
+            'pendingLhdnAmount',
+            'validatedLhdnCount',
+            'lowStockProducts',
+            'recentExpenses'
+        ));
+    }
+
+    public function storeExpense(Request $request)
+    {
+        $request->validate([
+            'category' => 'required|in:RENT,UTILITIES,WAGES,TRANSPORT_FUEL,MAINTENANCE,OTHER',
+            'amount' => 'required|numeric|min:0.01',
+            'expense_date' => 'required|date',
+            'description' => 'required|string|max:255'
+        ]);
+
+        ShopExpense::create([
+            'recorded_by' => Auth::id(),
+            'category' => $request->category,
+            'amount' => $request->amount,
+            'expense_date' => $request->expense_date,
+            'description' => $request->description
+        ]);
+
+        return redirect()->route('dashboard')->with('success', 'Operating expense recorded and deducted from Net Profit.');
+    }
+
+    public function consolidateLhdn()
+    {
+        $pendingOrders = Order::where('lhdn_status', 'PENDING_CONSOLIDATION')->get();
+
+        if ($pendingOrders->isEmpty()) {
+            return redirect()->route('dashboard')->with('error', 'No pending walk-in receipts require LHDN consolidation.');
+        }
+
+        $batchUin = 'UIN-CONSOL-' . now()->format('Ym') . '-' . strtoupper(substr(uniqid(), -5));
+        $count = $pendingOrders->count();
+        $totalVal = $pendingOrders->sum('total_amount');
+
+        Order::where('lhdn_status', 'PENDING_CONSOLIDATION')->update([
+            'lhdn_status' => 'CONSOLIDATED',
+            'lhdn_uin' => $batchUin
+        ]);
+
+        return redirect()->route('dashboard')->with(
+            'success',
+            "LHDN MyInvois Consolidation Complete! {$count} walk-in receipts (RM " . number_format($totalVal, 2) . ") submitted under Batch UIN: {$batchUin}."
+        );
+    }
+
+    public function exportCsv()
+    {
+        $orders = Order::with(['customer', 'user', 'items'])->orderBy('created_at', 'desc')->get();
+        $filename = 'SME_Hardware_Accounting_Ledger_' . now()->format('Y_m_d_His') . '.csv';
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+        ];
+
+        $callback = function () use ($orders) {
+            $file = fopen('php://output', 'w');
+
+            fputcsv($file, [
+                'Order ID',
+                'Date',
+                'Customer / Contractor',
+                'Payment Status',
+                'Payment Method',
+                'Delivery Mode',
+                'LHDN Status',
+                'LHDN UIN',
+                'Revenue (RM)',
+                'Recorded COGS (RM)',
+                'Gross Profit (RM)'
+            ]);
+
+            foreach ($orders as $order) {
+                $orderCogs = $order->items->sum(function ($item) {
+                    return $item->quantity * $item->recorded_cost_price;
+                });
+                $gross = $order->total_amount - $orderCogs;
+
+                fputcsv($file, [
+                    '#' . str_pad($order->id, 6, '0', STR_PAD_LEFT),
+                    $order->created_at->format('Y-m-d H:i'),
+                    $order->customer ? $order->customer->name : 'Walk-in Customer',
+                    $order->payment_status,
+                    $order->payment_method,
+                    $order->delivery_type,
+                    $order->lhdn_status,
+                    $order->lhdn_uin ?? 'N/A',
+                    number_format($order->total_amount, 2, '.', ''),
+                    number_format($orderCogs, 2, '.', ''),
+                    number_format($gross, 2, '.', '')
+                ]);
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
     }
 
     public function generateAiInsights(Request $request)
@@ -31,11 +166,11 @@ class DashboardController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'Missing Groq API Key'], 500);
             }
 
-            $deadStock = \App\Models\Product::where('updated_at', '<', now()->subMonths(6))
+            $deadStock = Product::where('updated_at', '<', now()->subMonths(6))
                 ->where('stock_quantity', '>', 0)
                 ->get(['name', 'sku', 'stock_quantity', 'retail_selling_price']);
 
-            $recentOrders = \App\Models\Order::with('items.product')
+            $recentOrders = Order::with('items.product')
                 ->latest()
                 ->take(15)
                 ->get();

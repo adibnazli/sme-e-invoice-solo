@@ -2,45 +2,40 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\PosController;
+use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\ProductController;
+use App\Http\Controllers\CustomerController;
 use App\Http\Middleware\OwnerAccess;
 
-// Authentication Routes
 Route::get('/', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
-// Protected Routes (Require Login)
 Route::middleware('auth')->group(function () {
     
-    // Owner-Only Restricted Routes
     Route::middleware([OwnerAccess::class])->group(function () {
-        Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index'])->name('dashboard');
-        Route::get('/api/ai-insights', [\App\Http\Controllers\DashboardController::class, 'generateAiInsights'])->name('api.ai.insights');
+        Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+        Route::get('/api/ai-insights', [DashboardController::class, 'generateAiInsights'])->name('api.ai.insights');
+        Route::post('/dashboard/expenses', [DashboardController::class, 'storeExpense'])->name('dashboard.expenses.store');
+        Route::post('/dashboard/lhdn-consolidate', [DashboardController::class, 'consolidateLhdn'])->name('dashboard.lhdn.consolidate');
+        Route::get('/dashboard/export-csv', [DashboardController::class, 'exportCsv'])->name('dashboard.export.csv');
     });
 
-    // Module 4: POS & Invoices (Accessible by Cashiers and Owners)
-    Route::get('/pos', [\App\Http\Controllers\PosController::class, 'index'])->name('pos');
-    Route::post('/pos/checkout', [\App\Http\Controllers\PosController::class, 'checkout'])->name('pos.checkout');
-    Route::get('/invoice/{order}', [\App\Http\Controllers\InvoiceController::class, 'show'])->name('invoice.show');
+    Route::get('/pos', [PosController::class, 'index'])->name('pos');
+    Route::post('/pos/checkout', [PosController::class, 'checkout'])->name('pos.checkout');
+    Route::post('/pos/parse-ai-order', [PosController::class, 'parseAiOrder'])->name('pos.parse.ai');
+    Route::get('/invoice/{order}', [InvoiceController::class, 'show'])->name('invoice.show');
 
-    // Module 2: Inventory & Customers
-    Route::get('/products', [\App\Http\Controllers\ProductController::class, 'index'])->name('products.index');
-    Route::post('/products/{product}/archive', [\App\Http\Controllers\ProductController::class, 'archive'])->name('products.archive');
-    Route::get('/products/create', [\App\Http\Controllers\ProductController::class, 'create'])->name('products.create');
-    Route::post('/products/scan', [\App\Http\Controllers\ProductController::class, 'scan'])->name('products.scan');
-    Route::post('/products', [\App\Http\Controllers\ProductController::class, 'store'])->name('products.store');
-    Route::get('/generate-description', [App\Http\Controllers\ProductController::class, 'generateDescription']);
+    Route::get('/products', [ProductController::class, 'index'])->name('products.index');
+    Route::post('/products/{product}/archive', [ProductController::class, 'archive'])->name('products.archive');
+    Route::post('/products/{product}/restock', [ProductController::class, 'restock'])->name('products.restock');
+    Route::get('/products/create', [ProductController::class, 'create'])->name('products.create');
+    Route::post('/products/scan', [ProductController::class, 'scan'])->name('products.scan');
+    Route::post('/products', [ProductController::class, 'store'])->name('products.store');
 
-    Route::get('/customers', [\App\Http\Controllers\CustomerController::class, 'index'])->name('customers.index');
-    Route::post('/customers', [\App\Http\Controllers\CustomerController::class, 'store'])->name('customers.store');
-    
-});
-
-Route::get('/debug-ai', function () {
-    $apiKey = trim(env('GEMINI_API_KEY')); 
-    
-    $response = \Illuminate\Support\Facades\Http::withoutVerifying()
-        ->get("https://generativelanguage.googleapis.com/v1beta/models?key={$apiKey}");
-        
-    return $response->json();
+    Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
+    Route::post('/customers', [CustomerController::class, 'store'])->name('customers.store');
+    Route::post('/customers/{customer}/repay', [CustomerController::class, 'repayDebt'])->name('customers.repay');
 });
