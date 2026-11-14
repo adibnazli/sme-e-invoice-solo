@@ -3,9 +3,11 @@
 @section('content')
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="fw-bold"><i class="bi bi-people-fill me-2"></i> Contractors, Credit Limits & Loyalty</h2>
+    @if(Auth::user()->role === 'OWNER')
     <button class="btn btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#newCustomerModal">
         <i class="bi bi-plus-lg me-2"></i> Register Customer / Contractor
     </button>
+    @endif
 </div>
 
 @if(session('success'))
@@ -63,16 +65,18 @@
                             </span>
                         </td>
                         <td class="text-end pe-4">
-                            @if($customer->current_debt > 0)
+                            @if($customer->current_debt > 0 && Auth::user()->role === 'OWNER')
                                 <button class="btn btn-sm btn-success fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#repay-{{ $customer->id }}">
                                     <i class="bi bi-cash-coin me-1"></i> Settle Hutang
                                 </button>
+                            @elseif($customer->current_debt > 0)
+                                <span class="badge bg-danger">Owner Approval Req.</span>
                             @else
                                 <span class="badge bg-light text-muted border">Clear</span>
                             @endif
                         </td>
                     </tr>
-                    @if($customer->current_debt > 0)
+                    @if($customer->current_debt > 0 && Auth::user()->role === 'OWNER')
                     <tr class="collapse bg-light" id="repay-{{ $customer->id }}">
                         <td colspan="6" class="p-3 ps-4">
                             <form action="{{ route('customers.repay', $customer->id) }}" method="POST" class="row g-2 align-items-center">
@@ -100,6 +104,7 @@
     </div>
 </div>
 
+@if(Auth::user()->role === 'OWNER')
 <div class="modal fade" id="newCustomerModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -146,4 +151,5 @@
         </div>
     </div>
 </div>
+@endif
 @endsection

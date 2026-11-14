@@ -222,6 +222,46 @@
     </div>
 </div>
 
+<div class="card shadow-sm border-0 mt-4">
+    <div class="card-header bg-dark text-white fw-bold py-3">
+        <i class="bi bi-shield-lock-fill me-2"></i> Staff Shift & Security Audit Log (user_login_logs)
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">Staff Name</th>
+                        <th>Role</th>
+                        <th>Login Timestamp</th>
+                        <th>IP Address</th>
+                        <th class="pe-4">Device / Browser</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($recentLogins as $log)
+                    <tr>
+                        <td class="ps-4 fw-bold">{{ $log->name }}</td>
+                        <td>
+                            <span class="badge {{ $log->role === 'OWNER' ? 'bg-primary' : 'bg-secondary' }}">
+                                {{ $log->role }}
+                            </span>
+                        </td>
+                        <td>{{ \Carbon\Carbon::parse($log->login_at)->format('d M Y, h:i:s A') }}</td>
+                        <td><code>{{ $log->ip_address }}</code></td>
+                        <td class="pe-4 small text-muted text-truncate" style="max-width: 280px;">{{ $log->user_agent }}</td>
+                    </tr>
+                    @empty
+                    <tr>
+                        <td colspan="5" class="text-center py-3 text-muted">No login activity recorded yet.</td>
+                    </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     fetch('{{ route('api.ai.insights') }}')

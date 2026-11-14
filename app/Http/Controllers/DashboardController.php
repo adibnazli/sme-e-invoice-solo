@@ -42,6 +42,13 @@ class DashboardController extends Controller
             ->take(8)
             ->get();
 
+        $recentLogins = DB::table('user_login_logs')
+            ->join('users', 'user_login_logs.user_id', '=', 'users.id')
+            ->select('user_login_logs.*', 'users.name', 'users.role')
+            ->orderBy('user_login_logs.login_at', 'desc')
+            ->take(5)
+            ->get();
+
         return view('dashboard', compact(
             'todayRevenue',
             'totalRevenue',
@@ -56,7 +63,8 @@ class DashboardController extends Controller
             'pendingLhdnAmount',
             'validatedLhdnCount',
             'lowStockProducts',
-            'recentExpenses'
+            'recentExpenses',
+            'recentLogins'
         ));
     }
 

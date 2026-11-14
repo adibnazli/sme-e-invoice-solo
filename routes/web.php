@@ -14,28 +14,31 @@ Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 Route::middleware('auth')->group(function () {
-    
+
     Route::middleware([OwnerAccess::class])->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('/api/ai-insights', [DashboardController::class, 'generateAiInsights'])->name('api.ai.insights');
         Route::post('/dashboard/expenses', [DashboardController::class, 'storeExpense'])->name('dashboard.expenses.store');
         Route::post('/dashboard/lhdn-consolidate', [DashboardController::class, 'consolidateLhdn'])->name('dashboard.lhdn.consolidate');
         Route::get('/dashboard/export-csv', [DashboardController::class, 'exportCsv'])->name('dashboard.export.csv');
+
+        Route::get('/products', [ProductController::class, 'index'])->name('products.index');
+        Route::get('/products/create', [ProductController::class, 'create'])->name('products.create');
+        Route::post('/products/scan', [ProductController::class, 'scan'])->name('products.scan');
+        Route::post('/products', [ProductController::class, 'store'])->name('products.store');
+        Route::post('/products/{product}/archive', [ProductController::class, 'archive'])->name('products.archive');
+        Route::post('/products/{product}/restock', [ProductController::class, 'restock'])->name('products.restock');
+
+        Route::post('/customers', [CustomerController::class, 'store'])->name('customers.store');
+        Route::post('/customers/{customer}/repay', [CustomerController::class, 'repayDebt'])->name('customers.repay');
     });
 
     Route::get('/pos', [PosController::class, 'index'])->name('pos');
     Route::post('/pos/checkout', [PosController::class, 'checkout'])->name('pos.checkout');
     Route::post('/pos/parse-ai-order', [PosController::class, 'parseAiOrder'])->name('pos.parse.ai');
+
+    Route::get('/orders', [InvoiceController::class, 'index'])->name('orders.index');
     Route::get('/invoice/{order}', [InvoiceController::class, 'show'])->name('invoice.show');
 
-    Route::get('/products', [ProductController::class, 'index'])->name('products.index');
-    Route::post('/products/{product}/archive', [ProductController::class, 'archive'])->name('products.archive');
-    Route::post('/products/{product}/restock', [ProductController::class, 'restock'])->name('products.restock');
-    Route::get('/products/create', [ProductController::class, 'create'])->name('products.create');
-    Route::post('/products/scan', [ProductController::class, 'scan'])->name('products.scan');
-    Route::post('/products', [ProductController::class, 'store'])->name('products.store');
-
     Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
-    Route::post('/customers', [CustomerController::class, 'store'])->name('customers.store');
-    Route::post('/customers/{customer}/repay', [CustomerController::class, 'repayDebt'])->name('customers.repay');
 });
