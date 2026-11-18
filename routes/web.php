@@ -8,6 +8,11 @@ use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Middleware\OwnerAccess;
+use App\Http\Controllers\StaffController;
+
+Route::get('/staff', [StaffController::class, 'index'])->name('staff.index');
+Route::post('/staff', [StaffController::class, 'store'])->name('staff.store');
+Route::delete('/staff/{id}', [StaffController::class, 'destroy'])->name('staff.destroy');
 
 Route::get('/', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
@@ -38,6 +43,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/pos/parse-ai-order', [PosController::class, 'parseAiOrder'])->name('pos.parse.ai');
 
     Route::get('/orders', [InvoiceController::class, 'index'])->name('orders.index');
+    Route::post('/orders/{id}/send-telegram', [App\Http\Controllers\PosController::class, 'sendTelegram'])->name('invoice.telegram');
     Route::get('/invoice/{order}', [InvoiceController::class, 'show'])->name('invoice.show');
 
     Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');

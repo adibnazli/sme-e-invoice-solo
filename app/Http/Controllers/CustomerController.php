@@ -22,14 +22,16 @@ class CustomerController extends Controller
             'name' => 'required|string|max:255',
             'phone' => 'required|string|max:255|unique:customers,phone',
             'email' => 'nullable|email|max:255',
+            'telegram_chat_id' => 'nullable|string|max:100',
             'customer_type' => 'required|in:WALK_IN,CONTRACTOR',
-            'credit_limit' => 'required|numeric|min:0'
+            'credit_limit' => 'required|numeric|min:0',
         ]);
 
         Customer::create([
             'name' => $request->name,
             'phone' => $request->phone,
             'email' => $request->email,
+            'telegram_chat_id' => $request->telegram_chat_id ? trim($request->telegram_chat_id) : null,
             'customer_type' => $request->customer_type,
             'credit_limit' => $request->customer_type === 'CONTRACTOR' ? $request->credit_limit : 0.00,
             'current_debt' => 0.00,

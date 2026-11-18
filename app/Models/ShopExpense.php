@@ -13,8 +13,8 @@ class ShopExpense extends Model
         'recorded_by',
         'category',
         'amount',
+        'description',
         'expense_date',
-        'description'
     ];
 
     public function user()

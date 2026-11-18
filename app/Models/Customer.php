@@ -13,10 +13,11 @@ class Customer extends Model
         'name',
         'phone',
         'email',
+        'telegram_chat_id',
         'customer_type',
         'credit_limit',
         'current_debt',
-        'loyalty_points'
+        'loyalty_points',
     ];
 
     public function orders()
