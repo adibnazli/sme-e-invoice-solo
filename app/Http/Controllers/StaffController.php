@@ -11,20 +11,13 @@ class StaffController extends Controller
 {
     public function index()
     {
-        if (Auth::user()->role !== 'OWNER') {
-            abort(403, 'Owner access only.');
-        }
-
         $staff = User::orderBy('role', 'desc')->orderBy('name', 'asc')->get();
+
         return view('staff.index', compact('staff'));
     }
 
     public function store(Request $request)
     {
-        if (Auth::user()->role !== 'OWNER') {
-            abort(403, 'Owner access only.');
-        }
-
         $request->validate([
             'name' => 'required|string|max:255',
             'username' => 'required|string|max:100|unique:users,username',
@@ -32,7 +25,7 @@ class StaffController extends Controller
             'role' => 'required|in:CASHIER,OWNER',
         ]);
 
-        $user = new User();
+        $user = new User;
         $user->name = $request->name;
         $user->username = $request->username;
         $user->password = Hash::make($request->password);
@@ -44,15 +37,12 @@ class StaffController extends Controller
 
     public function destroy($id)
     {
-        if (Auth::user()->role !== 'OWNER') {
-            abort(403, 'Owner access only.');
-        }
-
-        if ((int)$id === Auth::id()) {
+        if ((int) $id === Auth::id()) {
             return back()->withErrors(['error' => 'You cannot delete your own active account.']);
         }
 
         User::findOrFail($id)->delete();
+
         return back()->with('success', 'Staff account removed.');
     }
 }
