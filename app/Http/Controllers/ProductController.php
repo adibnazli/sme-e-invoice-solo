@@ -4,22 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 
 class ProductController extends Controller
 {
     public function index()
     {
-        $user = Auth::user();
-
-        if ($user->role !== 'OWNER') {
-            return redirect('/pos')->with('error', 'Unauthorized access.');
-        }
-
         $products = Product::where('status', 'ACTIVE')
-                           ->orderBy('stock_quantity', 'asc')
-                           ->get();
+            ->orderBy('stock_quantity', 'asc')
+            ->get();
 
         return view('products.index', compact('products'));
     }
@@ -27,6 +20,7 @@ class ProductController extends Controller
     public function archive(Product $product)
     {
         $product->update(['status' => 'ARCHIVED']);
+
         return redirect()->route('products.index')->with('success', 'Product archived.');
     }
 
@@ -45,8 +39,8 @@ class ProductController extends Controller
         $base64Image = base64_encode(file_get_contents($imagePath));
         $mimeType = $request->file('hardware_image')->getMimeType();
 
-        $apiKey = trim(env('GEMINI_API_KEY'));
-        
+        $apiKey = trim((string) config('services.gemini.api_key', ''));
+
         if (empty($apiKey)) {
             return back()->with('error', 'System Error: Gemini API Key is missing.');
         }
@@ -61,30 +55,30 @@ class ProductController extends Controller
                         [
                             'inline_data' => [
                                 'mime_type' => $mimeType,
-                                'data' => $base64Image
-                            ]
-                        ]
-                    ]
-                ]
-            ]
+                                'data' => $base64Image,
+                            ],
+                        ],
+                    ],
+                ],
+            ],
         ];
 
         $response = Http::withoutVerifying()->withHeaders(['Content-Type' => 'application/json'])->post($url, $payload);
-        
+
         if ($response->successful()) {
             $rawText = $response->json('candidates.0.content.parts.0.text');
             $cleanJson = trim(str_replace(['```json', '```'], '', $rawText));
             $result = json_decode($cleanJson, true);
-            
+
             return back()->with('ai_data', $result)->with('success', 'Image scanned successfully!');
         }
 
         $diagnostic = Http::withoutVerifying()->get("https://generativelanguage.googleapis.com/v1/models?key={$apiKey}");
-        $availableModels = collect($diagnostic->json('models'))->pluck('name')->filter(function($name) {
+        $availableModels = collect($diagnostic->json('models'))->pluck('name')->filter(function ($name) {
             return str_contains($name, 'gemini');
         })->implode(', ');
 
-        return back()->with('error', 'Google API Error: ' . $response->json('error.message') . ' || AVAILABLE MODELS: ' . $availableModels);
+        return back()->with('error', 'Google API Error: '.$response->json('error.message').' || AVAILABLE MODELS: '.$availableModels);
     }
 
     public function store(Request $request)
@@ -103,7 +97,7 @@ class ProductController extends Controller
             'low_stock_threshold' => 'required|integer|min:1',
             'lhdn_class_code' => 'required|string|max:10',
             'description' => 'nullable|string',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048'
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
         ]);
 
         $imagePath = null;
@@ -137,7 +131,7 @@ class ProductController extends Controller
         $request->validate([
             'added_quantity' => 'required|integer|min:1',
             'new_supplier_cost' => 'required|numeric|min:0.01',
-            'auto_adjust_retail' => 'nullable|boolean'
+            'auto_adjust_retail' => 'nullable|boolean',
         ]);
 
         $oldCost = (float) $product->supplier_cost_price;
@@ -153,16 +147,16 @@ class ProductController extends Controller
 
             if ($request->boolean('auto_adjust_retail')) {
                 $currentRetail = $recommendedRetail;
-                $warningMessage = "Supplier cost rose from RM " . number_format($oldCost, 2) . " to RM " . number_format($newCost, 2) . ". Retail price was automatically bumped to RM " . number_format($recommendedRetail, 2) . " to protect a 20% margin.";
+                $warningMessage = 'Supplier cost rose from RM '.number_format($oldCost, 2).' to RM '.number_format($newCost, 2).'. Retail price was automatically bumped to RM '.number_format($recommendedRetail, 2).' to protect a 20% margin.';
             } else {
-                $warningMessage = "MARGIN ALERT: Supplier cost rose to RM " . number_format($newCost, 2) . "! Your current retail price (RM " . number_format($currentRetail, 2) . ") leaves only a " . round($newMarginPercent, 1) . "% margin. Recommended new retail price: RM " . number_format($recommendedRetail, 2) . ".";
+                $warningMessage = 'MARGIN ALERT: Supplier cost rose to RM '.number_format($newCost, 2).'! Your current retail price (RM '.number_format($currentRetail, 2).') leaves only a '.round($newMarginPercent, 1).'% margin. Recommended new retail price: RM '.number_format($recommendedRetail, 2).'.';
             }
         }
 
         $product->update([
             'stock_quantity' => $product->stock_quantity + $addedQty,
             'supplier_cost_price' => $newCost,
-            'retail_selling_price' => $currentRetail
+            'retail_selling_price' => $currentRetail,
         ]);
 
         $redirect = redirect()->route('products.index')

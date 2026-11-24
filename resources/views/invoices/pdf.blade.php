@@ -143,7 +143,7 @@
                         {{ $order->customer ? $order->customer->name : 'Walk-in Cash Customer' }}
                     </div>
                     @if($order->customer)
-                        <div class="muted">Phone: {{ $order->customer->phone }} {{ $order->customer->email ? '\vert{} ' . $order->customer->email : '' }}</div>
+                        <div class="muted">Phone: {{ $order->customer->phone }}{{ $order->customer->email ? ' | ' . $order->customer->email : '' }}</div>
                     @endif
                 </td>
                 <td style="width: 40%; text-align: right; vertical-align: middle;">
@@ -179,7 +179,7 @@
                 <td>{{ $idx + 1 }}</td>
                 <td>
                     <strong>{{ $item->product->name ?? 'Hardware Item' }}</strong><br>
-                    <span class="muted">SKU: {{ $item->product->sku ?? '-' }} | LHDN Class: 022</span>
+                    <span class="muted">SKU: {{ $item->product->sku ?? '-' }} | LHDN Class: {{ $item->product->lhdn_class_code ?? '022' }}</span>
                 </td>
                 <td class="text-center"><strong>{{ $item->quantity }} {{ $item->unit_sold ?? ($item->product->unit_type ?? 'unit') }}</strong></td>
                 <td class="text-right">{{ number_format($item->unit_price, 2) }}</td>

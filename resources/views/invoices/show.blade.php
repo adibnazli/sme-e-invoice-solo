@@ -333,14 +333,13 @@
                         <input type="text"
                                name="telegram_chat_id"
                                class="form-control"
-                               value="{{ $order->customer->telegram_chat_id ?? env('TELEGRAM_CHAT_ID') }}"
-                               placeholder="e.g. 123456789"
-                               required>
+                               value="{{ $order->customer->telegram_chat_id ?? '' }}"
+                               placeholder="e.g. 123456789 (leave blank to use store default)">
                         <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">
                             @if($order->customer)
-                                Updating this ID will also save it to <strong>{{ $order->customer->name }}</strong>'s contractor profile for automatic future checkouts.
+                                Enter a new Chat ID to update <strong>{{ $order->customer->name }}</strong>'s profile, or leave blank to use their saved ID or the store default.
                             @else
-                                Pre-filled with your default store Telegram Chat ID for walk-in demonstration.
+                                Enter a Telegram Chat ID, or leave blank to send to the configured store default.
                             @endif
                         </small>
                     </div>

@@ -15,6 +15,13 @@ class OwnerAccess
             return $next($request);
         }
 
+        if ($request->expectsJson() || $request->is('api/*')) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Access Denied: Admin privileges required.',
+            ], 403);
+        }
+
         return redirect()->route('pos')->with('error', 'Access Denied: Admin privileges required.');
     }
 }

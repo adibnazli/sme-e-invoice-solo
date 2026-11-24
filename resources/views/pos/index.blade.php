@@ -513,15 +513,77 @@
         document.getElementById('pos_no_results').classList.toggle('d-none', visibleCount > 0);
     }
 
-    function addToCart(productId, forcedQty = 1, forcedMode = 'BASE') {
+    function isValidBulkProduct(product) {
+        return Boolean(product && product.bulk_unit_type && Number(product.bulk_conversion_rate) > 1);
+    }
+
+    function getConversionRate(product, saleMode) {
+        if (saleMode === 'BULK' && isValidBulkProduct(product)) {
+            return parseInt(product.bulk_conversion_rate, 10);
+        }
+        return 1;
+    }
+
+    function getRemainingBaseStock(product, excludeIndex = -1) {
+        if (!product) return 0;
+        const totalStock = Math.max(0, parseInt(product.stock_quantity, 10) || 0);
+        const reservedBaseUnits = cart.reduce((sum, entry, idx) => {
+            if (idx === excludeIndex || entry.id !== product.id) {
+                return sum;
+            }
+            return sum + (entry.qty * getConversionRate(product, entry.sale_mode));
+        }, 0);
+        return Math.max(0, totalStock - reservedBaseUnits);
+    }
+
+    function getMaxAvailableQty(product, saleMode, excludeIndex = -1) {
+        const rate = getConversionRate(product, saleMode);
+        return Math.floor(getRemainingBaseStock(product, excludeIndex) / rate);
+    }
+
+    function addToCart(productId, forcedQty = 1, forcedMode = 'BASE', silent = false) {
         const p = catalog[productId];
         if (!p) return;
 
-        let existing = cart.find(item => item.id === productId && item.sale_mode === forcedMode);
-        if (existing) {
-            existing.qty += forcedQty;
+        const isBulk = (forcedMode === 'BULK' && isValidBulkProduct(p));
+        const resolvedMode = isBulk ? 'BULK' : 'BASE';
+        const unitLabel = isBulk ? p.bulk_unit_type : p.unit_type;
+        const existingIndex = cart.findIndex(item => item.id === productId && item.sale_mode === resolvedMode);
+        const maxQty = getMaxAvailableQty(p, resolvedMode, existingIndex);
+        const remainingBase = getRemainingBaseStock(p, existingIndex);
+
+        if (maxQty < 1) {
+            if (!silent) {
+                showPosPopup(
+                    'warning',
+                    'Stock Limit Reached',
+                    'Insufficient warehouse stock for this unit:',
+                    [`<span class="ai-warn-pill pill-capped">Stock Cap</span> Need at least <strong>${getConversionRate(p, resolvedMode)} ${p.unit_type}</strong> for 1 ${unitLabel}, only <strong>${remainingBase} ${p.unit_type}</strong> available.`]
+                );
+            }
+            return;
+        }
+
+        const requestedAddition = Math.max(1, parseInt(forcedQty, 10) || 1);
+        const currentQty = existingIndex !== -1 ? cart[existingIndex].qty : 0;
+        let targetQty = currentQty + requestedAddition;
+
+        if (targetQty > maxQty) {
+            targetQty = maxQty;
+            if (!silent) {
+                const rate = getConversionRate(p, resolvedMode);
+                showPosPopup(
+                    'warning',
+                    'Stock Limit Reached',
+                    'Requested quantity exceeds available warehouse inventory:',
+                    [`<span class="ai-warn-pill pill-capped">Stock Cap</span> <strong>${p.name}</strong> capped at <strong>${maxQty} ${unitLabel}</strong> (${maxQty * rate} of ${remainingBase} ${p.unit_type} available).`]
+                );
+            }
+        }
+
+        if (existingIndex !== -1) {
+            cart[existingIndex].qty = targetQty;
         } else {
-            const isBulk = (forcedMode === 'BULK' && p.bulk_unit_type && p.bulk_conversion_rate > 1);
             const baseFloor = parseFloat((p.supplier_cost_price * 1.08).toFixed(2));
             const bulkFloor = isBulk ? parseFloat((p.supplier_cost_price * p.bulk_conversion_rate * 1.08).toFixed(2)) : baseFloor;
             const defaultPrice = isBulk ? parseFloat(p.bulk_selling_price) : parseFloat(p.retail_selling_price);
@@ -529,12 +591,12 @@
             cart.push({
                 id: p.id,
                 name: p.name,
-                sale_mode: isBulk ? 'BULK' : 'BASE',
-                unit_label: isBulk ? p.bulk_unit_type : p.unit_type,
+                sale_mode: resolvedMode,
+                unit_label: unitLabel,
                 price: defaultPrice,
                 min_safe_price: isBulk ? bulkFloor : baseFloor,
-                qty: forcedQty,
-                has_bulk: Boolean(p.bulk_unit_type && p.bulk_conversion_rate > 1)
+                qty: targetQty,
+                has_bulk: isValidBulkProduct(p)
             });
         }
         updateCartUI();
@@ -545,36 +607,90 @@
         const p = catalog[item.id];
         if (!p || !item.has_bulk) return;
 
+        const remainingBase = getRemainingBaseStock(p, index);
+
         if (item.sale_mode === 'BASE') {
+            const maxBulkQty = getMaxAvailableQty(p, 'BULK', index);
+            const conversionRate = getConversionRate(p, 'BULK');
+            if (maxBulkQty < 1) {
+                showPosPopup(
+                    'warning',
+                    'Stock Limit Reached',
+                    'Cannot switch to bulk unit due to insufficient stock:',
+                    [`<span class="ai-warn-pill pill-capped">Stock Cap</span> Need at least <strong>${conversionRate} ${p.unit_type}</strong> for 1 ${p.bulk_unit_type}, only <strong>${remainingBase} ${p.unit_type}</strong> available.`]
+                );
+                return;
+            }
+
             item.sale_mode = 'BULK';
             item.unit_label = p.bulk_unit_type;
             item.price = parseFloat(p.bulk_selling_price);
             item.min_safe_price = parseFloat((p.supplier_cost_price * p.bulk_conversion_rate * 1.08).toFixed(2));
+
+            if (item.qty > maxBulkQty) {
+                item.qty = maxBulkQty;
+                showPosPopup(
+                    'warning',
+                    'Stock Limit Reached',
+                    'Quantity adjusted to match available bulk packs:',
+                    [`<span class="ai-warn-pill pill-capped">Stock Cap</span> <strong>${p.name}</strong> capped at <strong>${maxBulkQty} ${p.bulk_unit_type}</strong> (${maxBulkQty * conversionRate} of ${remainingBase} ${p.unit_type} available).`]
+                );
+            }
         } else {
+            const maxBaseQty = getMaxAvailableQty(p, 'BASE', index);
             item.sale_mode = 'BASE';
             item.unit_label = p.unit_type;
             item.price = parseFloat(p.retail_selling_price);
             item.min_safe_price = parseFloat((p.supplier_cost_price * 1.08).toFixed(2));
+
+            if (item.qty > maxBaseQty && maxBaseQty >= 1) {
+                item.qty = maxBaseQty;
+                showPosPopup(
+                    'warning',
+                    'Stock Limit Reached',
+                    'Quantity adjusted to match available base stock:',
+                    [`<span class="ai-warn-pill pill-capped">Stock Cap</span> <strong>${p.name}</strong> capped at <strong>${maxBaseQty} ${p.unit_type}</strong>.`]
+                );
+            }
         }
         updateCartUI();
     }
 
     function updateItemQty(index, newQty) {
-        let q = parseInt(newQty);
-        const p = catalog[cart[index].id];
+        let q = parseInt(newQty, 10);
+        const item = cart[index];
+        const p = catalog[item.id];
         if (isNaN(q) || q < 1) q = 1;
 
-        if (p && q > p.stock_quantity) {
-            q = p.stock_quantity;
-            showPosPopup(
-                'warning',
-                'Stock Limit Reached',
-                'Requested quantity exceeds available warehouse inventory:',
-                [`<span class="ai-warn-pill pill-capped">Stock Cap</span> <strong>${p.name}</strong> capped at <strong>${p.stock_quantity} ${p.unit_type}</strong>.`]
-            );
+        if (p) {
+            const maxQty = getMaxAvailableQty(p, item.sale_mode, index);
+            const conversionRate = getConversionRate(p, item.sale_mode);
+            const remainingBase = getRemainingBaseStock(p, index);
+
+            if (maxQty < 1) {
+                showPosPopup(
+                    'warning',
+                    'Stock Limit Reached',
+                    'Insufficient warehouse inventory for this item:',
+                    [`<span class="ai-warn-pill pill-capped">Stock Cap</span> Need at least <strong>${conversionRate} ${p.unit_type}</strong> for 1 ${item.unit_label}, only <strong>${remainingBase} ${p.unit_type}</strong> available.`]
+                );
+                cart.splice(index, 1);
+                updateCartUI();
+                return;
+            }
+
+            if (q > maxQty) {
+                q = maxQty;
+                showPosPopup(
+                    'warning',
+                    'Stock Limit Reached',
+                    'Requested quantity exceeds available warehouse inventory:',
+                    [`<span class="ai-warn-pill pill-capped">Stock Cap</span> <strong>${p.name}</strong> capped at <strong>${maxQty} ${item.unit_label}</strong> (${maxQty * conversionRate} of ${remainingBase} ${p.unit_type} available).`]
+                );
+            }
         }
 
-        cart[index].qty = q;
+        item.qty = q;
         updateCartUI();
     }
 
@@ -752,19 +868,30 @@
                         const p = catalog[parsed.product_id];
                         if (!p) return;
 
-                        let requestedQty = parseInt(parsed.qty) || 1;
+                        const saleMode = (parsed.sale_mode === 'BULK' && isValidBulkProduct(p)) ? 'BULK' : 'BASE';
+                        const unitLabel = saleMode === 'BULK' ? p.bulk_unit_type : p.unit_type;
+                        const conversionRate = getConversionRate(p, saleMode);
+                        const existingIndex = cart.findIndex(item => item.id === p.id && item.sale_mode === saleMode);
+                        const existingQty = existingIndex !== -1 ? cart[existingIndex].qty : 0;
+                        const remainingBase = getRemainingBaseStock(p, existingIndex);
+                        const maxTotalQty = getMaxAvailableQty(p, saleMode, existingIndex);
+                        const maxAddable = Math.max(0, maxTotalQty - existingQty);
+
+                        let requestedQty = Math.max(1, parseInt(parsed.qty, 10) || 1);
                         let finalQty = requestedQty;
 
-                        if (requestedQty > p.stock_quantity) {
-                            finalQty = p.stock_quantity;
-                            warnings.push(`<span class="ai-warn-pill pill-capped">Stock Cap</span> <strong>${p.name}</strong> capped at <strong>${p.stock_quantity}</strong> (Requested ${requestedQty})`);
+                        if (requestedQty > maxAddable) {
+                            finalQty = maxAddable;
+                            if (maxAddable > 0) {
+                                warnings.push(`<span class="ai-warn-pill pill-capped">Stock Cap</span> <strong>${p.name}</strong> capped at <strong>${maxAddable} ${unitLabel}</strong> (${maxAddable * conversionRate} of ${remainingBase} ${p.unit_type} available; requested ${requestedQty} ${unitLabel})`);
+                            }
                         }
 
                         if (finalQty > 0) {
-                            addToCart(parseInt(parsed.product_id), finalQty, parsed.sale_mode || 'BASE');
+                            addToCart(parseInt(parsed.product_id, 10), finalQty, saleMode, true);
                             addedCount++;
                         } else {
-                            warnings.push(`<span class="ai-warn-pill pill-unmatched">Out of Stock</span> Skipped <strong>${p.name}</strong> (0 remaining)`);
+                            warnings.push(`<span class="ai-warn-pill pill-unmatched">Out of Stock</span> Skipped <strong>${p.name}</strong> (${remainingBase} ${p.unit_type} remaining; needs ${conversionRate} ${p.unit_type} per ${unitLabel})`);
                         }
                     });
 

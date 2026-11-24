@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Customer;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
-use App\Models\Customer;
 use App\Models\ShopExpense;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -17,16 +17,20 @@ class DashboardController extends Controller
     public function index()
     {
         $todayRevenue = Order::whereDate('created_at', Carbon::today())->sum('total_amount');
-        $totalRevenue = Order::sum('total_amount');$todayOrders = Order::whereDate('created_at', Carbon::today())->count();
+        $totalRevenue = Order::sum('total_amount');
+        $todayOrders = Order::whereDate('created_at', Carbon::today())->count();
 
         $totalCogs = OrderItem::select(DB::raw('SUM(quantity * recorded_cost_price) as total_cogs'))->value('total_cogs') ?? 0;
-        $totalExpenses = ShopExpense::sum('amount');$grossProfit = $totalRevenue -$totalCogs;
-        $netProfit = $grossProfit -$totalExpenses;
+        $totalExpenses = ShopExpense::sum('amount');
+        $grossProfit = $totalRevenue - $totalCogs;
+        $netProfit = $grossProfit - $totalExpenses;
 
-        $totalHutang = Customer::sum('current_debt');$debtorsCount = Customer::where('current_debt', '>', 0)->count();
+        $totalHutang = Customer::sum('current_debt');
+        $debtorsCount = Customer::where('current_debt', '>', 0)->count();
 
         $pendingLhdnCount = Order::where('lhdn_status', 'PENDING_CONSOLIDATION')->count();
-        $pendingLhdnAmount = Order::where('lhdn_status', 'PENDING_CONSOLIDATION')->sum('total_amount');$validatedLhdnCount = Order::whereIn('lhdn_status', ['VALIDATED', 'CONSOLIDATED'])->count();
+        $pendingLhdnAmount = Order::where('lhdn_status', 'PENDING_CONSOLIDATION')->sum('total_amount');
+        $validatedLhdnCount = Order::whereIn('lhdn_status', ['VALIDATED', 'CONSOLIDATED'])->count();
 
         $lowStockProducts = Product::whereColumn('stock_quantity', '<=', 'low_stock_threshold')
             ->where('status', 'ACTIVE')
@@ -70,14 +74,14 @@ class DashboardController extends Controller
             'category' => 'required|in:RENT,UTILITIES,WAGES,TRANSPORT_FUEL,MAINTENANCE,OTHER',
             'amount' => 'required|numeric|min:0.01',
             'expense_date' => 'required|date',
-            'description' => 'required|string|max:255'
+            'description' => 'required|string|max:255',
         ]);
 
         ShopExpense::create([
-            'recorded_by'  => Auth::id(),
-            'category'     => $request->category,
-            'amount'       => $request->amount,
-            'description'  => $request->description,
+            'recorded_by' => Auth::id(),
+            'category' => $request->category,
+            'amount' => $request->amount,
+            'description' => $request->description,
             'expense_date' => $request->input('expense_date', now()->toDateString()),
         ]);
 
@@ -92,31 +96,33 @@ class DashboardController extends Controller
             return redirect()->route('dashboard')->with('error', 'No pending walk-in receipts require LHDN consolidation.');
         }
 
-        $batchUin = 'UIN-CONSOL-' . now()->format('Ym') . '-' . strtoupper(substr(uniqid(), -5));
-        $count =$pendingOrders->count();
-        $totalVal =$pendingOrders->sum('total_amount');
+        $batchUin = 'UIN-CONSOL-'.now()->format('Ym').'-'.strtoupper(substr(uniqid(), -5));
+        $count = $pendingOrders->count();
+        $totalVal = $pendingOrders->sum('total_amount');
 
         Order::where('lhdn_status', 'PENDING_CONSOLIDATION')->update([
             'lhdn_status' => 'CONSOLIDATED',
-            'lhdn_uin' => $batchUin
+            'lhdn_uin' => $batchUin,
         ]);
 
         return redirect()->route('dashboard')->with(
             'success',
-            "LHDN MyInvois Consolidation Complete! {$count} walk-in receipts (RM " . number_format($totalVal, 2) . ") submitted under Batch UIN: {$batchUin}."
+            "LHDN MyInvois Consolidation Complete! {$count} walk-in receipts (RM ".number_format($totalVal, 2).") submitted under Batch UIN: {$batchUin}."
         );
     }
 
     public function exportCsv()
     {
-        $orders = Order::with(['customer', 'user', 'items'])->orderBy('created_at', 'desc')->get();$filename = 'SME_Hardware_Accounting_Ledger_' . now()->format('Y_m_d_His') . '.csv';
+        $orders = Order::with(['customer', 'user', 'items'])->orderBy('created_at', 'desc')->get();
+        $filename = 'SME_Hardware_Accounting_Ledger_'.now()->format('Y_m_d_His').'.csv';
 
         $headers = [
             'Content-Type' => 'text/csv',
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
         ];
 
-        $callback = function () use ($orders) {$file = fopen('php://output', 'w');
+        $callback = function () use ($orders) {
+            $file = fopen('php://output', 'w');
 
             fputcsv($file, [
                 'Order ID',
@@ -129,35 +135,36 @@ class DashboardController extends Controller
                 'LHDN UIN',
                 'Revenue (RM)',
                 'Recorded COGS (RM)',
-                'Gross Profit (RM)'
+                'Gross Profit (RM)',
             ]);
 
-            foreach ($orders as $order) {$orderCogs = $order->items->sum(function ($item) {
+            foreach ($orders as $order) {
+                $orderCogs = $order->items->sum(function ($item) {
                     return $item->quantity * $item->recorded_cost_price;
                 });
-                $gross = $order->total_amount -$orderCogs;
+                $gross = $order->total_amount - $orderCogs;
 
                 fputcsv($file, [
-                    '#' . str_pad($order->id, 6, '0', STR_PAD_LEFT),
-                    $order->created_at->format('Y-m-d H:i'),$order->customer ? $order->customer->name : 'Walk-in Customer',$order->payment_status,
-                    $order->payment_method,$order->delivery_type,
-                    $order->lhdn_status,$order->lhdn_uin ?? 'N/A',
+                    '#'.str_pad($order->id, 6, '0', STR_PAD_LEFT),
+                    $order->created_at->format('Y-m-d H:i'), $order->customer ? $order->customer->name : 'Walk-in Customer', $order->payment_status,
+                    $order->payment_method, $order->delivery_type,
+                    $order->lhdn_status, $order->lhdn_uin ?? 'N/A',
                     number_format($order->total_amount, 2, '.', ''),
                     number_format($orderCogs, 2, '.', ''),
-                    number_format($gross, 2, '.', '')
+                    number_format($gross, 2, '.', ''),
                 ]);
             }
 
             fclose($file);
         };
 
-        return response()->stream($callback, 200,$headers);
+        return response()->stream($callback, 200, $headers);
     }
 
     public function generateAiInsights(Request $request)
     {
         try {
-            $apiKey = trim(env('GROQ_API_KEY'));
+            $apiKey = trim((string) config('services.groq.api_key', ''));
 
             if (empty($apiKey)) {
                 return response()->json(['status' => 'error', 'message' => 'Missing Groq API Key'], 500);
@@ -180,8 +187,8 @@ class DashboardController extends Controller
                         'delivery_type' => $order->delivery_type,
                         'payment_status' => $order->payment_status,
                         'items' => $order->items->map(function ($i) {
-                            return ($i->product->name ?? 'Item') . ' (' . $i->quantity . ' ' .$i->unit_sold . ')';
-                        })->values()
+                            return ($i->product->name ?? 'Item').' ('.$i->quantity.' '.$i->unit_sold.')';
+                        })->values(),
                     ];
                 });
 
@@ -190,7 +197,7 @@ class DashboardController extends Controller
                 'location' => 'Senawang, Negeri Sembilan, Malaysia',
                 'active_inventory' => $activeCatalog,
                 'dead_stock_inventory' => $deadStock,
-                'recent_contractor_orders' => $recentOrders
+                'recent_contractor_orders' => $recentOrders,
             ]);
 
             $systemPrompt = "
@@ -256,16 +263,16 @@ STRICT RULES:
 - Bold key product names and quantities using <strong> tags.
 ";
 
-            $endpoint = 'https://' . 'api.groq.com/openai/v1/chat/completions';
+            $endpoint = 'https://'.'api.groq.com/openai/v1/chat/completions';
 
             $payload = json_encode([
                 'model' => 'openai/gpt-oss-20b',
                 'messages' => [
                     ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => $promptData]
+                    ['role' => 'user', 'content' => $promptData],
                 ],
                 'temperature' => 0.3,
-                'max_tokens' => 2048
+                'max_tokens' => 2048,
             ]);
 
             $ch = curl_init($endpoint);
@@ -275,10 +282,10 @@ STRICT RULES:
             curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'Content-Type: application/json',
-                'Authorization: Bearer ' . $apiKey,
+                'Authorization: Bearer '.$apiKey,
                 'User-Agent: SME-Hardware-Hub/1.0',
                 'Accept: application/json',
-                'Connection: close'
+                'Connection: close',
             ]);
 
             curl_setopt($ch, CURLOPT_TIMEOUT, 45);
@@ -303,7 +310,8 @@ STRICT RULES:
 
             if ($httpCode >= 200 && $httpCode < 300) {
                 $rawHtml = $data['choices'][0]['message']['content'] ?? 'No insights generated.';
-                $cleanHtml = preg_replace('/```(?:html)?\s*/i', '', $rawHtml);$cleanHtml = trim(str_replace('```', '', $cleanHtml));
+                $cleanHtml = preg_replace('/```(?:html)?\s*/i', '', $rawHtml);
+                $cleanHtml = trim(str_replace('```', '', $cleanHtml));
 
                 $scopedStyles = "
                 <style>
@@ -319,7 +327,7 @@ STRICT RULES:
 
                 return response()->json([
                     'status' => 'success',
-                    'insights' => $scopedStyles . $cleanHtml
+                    'insights' => $scopedStyles.$cleanHtml,
                 ]);
             }
 

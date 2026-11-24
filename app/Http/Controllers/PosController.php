@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Product;
+use App\Models\Customer;
 use App\Models\Order;
 use App\Models\OrderItem;
-use App\Models\Customer;
+use App\Models\Product;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -15,23 +15,25 @@ class PosController extends Controller
 {
     public function index()
     {
-        $products = Product::where('status', 'ACTIVE')->get();$customers = Customer::orderBy('name', 'asc')->get();
+        $products = Product::where('status', 'ACTIVE')->get();
+        $customers = Customer::orderBy('name', 'asc')->get();
+
         return view('pos.index', compact('products', 'customers'));
     }
 
     public function parseAiOrder(Request $request)
     {
         $request->validate([
-            'raw_text' => 'required|string|max:2000'
+            'raw_text' => 'required|string|max:2000',
         ]);
 
-        $groqApiKey = trim(env('GROQ_API_KEY'));
+        $groqApiKey = trim((string) config('services.groq.api_key', ''));
         if (empty($groqApiKey)) {
             return response()->json(['status' => 'error', 'message' => 'Missing GROQ_API_KEY in .env'], 500);
         }
 
         $catalog = Product::where('status', 'ACTIVE')->get([
-            'id', 'sku', 'name', 'unit_type', 'bulk_unit_type', 'bulk_conversion_rate'
+            'id', 'sku', 'name', 'unit_type', 'bulk_unit_type', 'bulk_conversion_rate',
         ])->toJson();
 
         $systemPrompt = "
@@ -58,23 +60,23 @@ class PosController extends Controller
             'model' => 'openai/gpt-oss-20b',
             'messages' => [
                 ['role' => 'system', 'content' => $systemPrompt],
-                ['role' => 'user', 'content' => $request->raw_text]
+                ['role' => 'user', 'content' => $request->raw_text],
             ],
             'temperature' => 0.0,
             'max_tokens' => 2048,
-            'response_format' => ['type' => 'json_object']
+            'response_format' => ['type' => 'json_object'],
         ]);
 
-        $groqUrl = 'https://' . 'api.groq.com/openai/v1/chat/completions';
+        $groqUrl = 'https://'.'api.groq.com/openai/v1/chat/completions';
         $ch = curl_init($groqUrl);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS,$groqPayload);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $groqPayload);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             'Content-Type: application/json',
-            'Authorization: Bearer ' . $groqApiKey,
+            'Authorization: Bearer '.$groqApiKey,
             'User-Agent: SME-Hardware-Hub/1.0',
-            'Connection: close'
+            'Connection: close',
         ]);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
@@ -90,14 +92,15 @@ class PosController extends Controller
         curl_close($ch);
 
         if ($curlError) {
-            return response()->json(['status' => 'error', 'message' => 'Network Error: ' . $curlError], 500);
+            return response()->json(['status' => 'error', 'message' => 'Network Error: '.$curlError], 500);
         }
 
-        if ($httpCode >= 200 &&$httpCode < 300) {
+        if ($httpCode >= 200 && $httpCode < 300) {
             $data = json_decode($response, true);
-            $rawContent =$data['choices'][0]['message']['content'] ?? '';
+            $rawContent = $data['choices'][0]['message']['content'] ?? '';
 
-            $cleanJson = preg_replace('/<think>.*?<\/think>/is', '', $rawContent);$cleanJson = preg_replace('/```(?:json)?\s*/i', '', $cleanJson);
+            $cleanJson = preg_replace('/<think>.*?<\/think>/is', '', $rawContent);
+            $cleanJson = preg_replace('/```(?:json)?\s*/i', '', $cleanJson);
             $cleanJson = trim($cleanJson);
 
             $start = strpos($cleanJson, '{');
@@ -108,10 +111,10 @@ class PosController extends Controller
 
             $parsedData = json_decode($cleanJson, true);
 
-            if (!is_array($parsedData)) {
+            if (! is_array($parsedData)) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'AI returned unreadable format: ' . ($rawContent ?: 'Empty response from model')
+                    'message' => 'AI returned unreadable format: '.($rawContent ?: 'Empty response from model'),
                 ], 422);
             }
 
@@ -126,12 +129,13 @@ class PosController extends Controller
             return response()->json([
                 'status' => 'success',
                 'items' => $items,
-                'unmatched' => $unmatched
+                'unmatched' => $unmatched,
             ]);
         }
 
         $errBody = json_decode($response, true);
-        $errMsg = $errBody['error']['message'] ?? ('Groq API Error (' . $httpCode . ')');
+        $errMsg = $errBody['error']['message'] ?? ('Groq API Error ('.$httpCode.')');
+
         return response()->json(['status' => 'error', 'message' => $errMsg], 500);
     }
 
@@ -158,23 +162,23 @@ class PosController extends Controller
         DB::beginTransaction();
         try {
             $totalAmount = 0;
-            $invoiceItemsText = "";
+            $invoiceItemsText = '';
             $customer = null;
 
-            if (!empty($customerId)) {
+            if (! empty($customerId)) {
                 $customer = Customer::lockForUpdate()->findOrFail($customerId);
-                if (!empty($customTelegramChatId) && $customer->telegram_chat_id !== $customTelegramChatId) {
+                if (! empty($customTelegramChatId) && $customer->telegram_chat_id !== $customTelegramChatId) {
                     $customer->telegram_chat_id = $customTelegramChatId;
                     $customer->save();
                 }
             }
 
-            if ($paymentStatus === 'CREDIT_HUTANG' && !$customer) {
-                throw new \Exception("Credit (Hutang) checkout requires selecting a registered Contractor account.");
+            if ($paymentStatus === 'CREDIT_HUTANG' && ! $customer) {
+                throw new \Exception('Credit (Hutang) checkout requires selecting a registered Contractor account.');
             }
 
             $lhdnStatus = $invoiceType === 'LHDN_EINVOICE' ? 'VALIDATED' : 'PENDING_CONSOLIDATION';
-            $lhdnUin = $invoiceType === 'LHDN_EINVOICE' ? 'UIN-MY-' . strtoupper(uniqid()) : null;
+            $lhdnUin = $invoiceType === 'LHDN_EINVOICE' ? 'UIN-MY-'.strtoupper(uniqid()) : null;
 
             $order = Order::create([
                 'user_id' => Auth::id(),
@@ -187,14 +191,14 @@ class PosController extends Controller
                 'invoice_type' => $invoiceType,
                 'lhdn_status' => $lhdnStatus,
                 'lhdn_uin' => $lhdnUin,
-                'raw_ai_prompt' => $rawAiPrompt
+                'raw_ai_prompt' => $rawAiPrompt,
             ]);
 
             foreach ($cart as $item) {
                 $product = Product::lockForUpdate()->findOrFail($item['id']);
                 $saleMode = $item['sale_mode'] ?? 'BASE';
-                $qty = (int)$item['qty'];
-                $negotiatedPrice = (float)$item['price'];
+                $qty = (int) $item['qty'];
+                $negotiatedPrice = (float) $item['price'];
 
                 if ($qty < 1) {
                     throw new \Exception("Invalid quantity for {$product->name}.");
@@ -202,15 +206,15 @@ class PosController extends Controller
 
                 if ($saleMode === 'BULK' && $product->bulk_unit_type && $product->bulk_conversion_rate > 1) {
                     $unitSold = $product->bulk_unit_type;
-                    $conversionRate = (int)$product->bulk_conversion_rate;
+                    $conversionRate = (int) $product->bulk_conversion_rate;
                     $rawStockDeduction = $qty * $conversionRate;
                     $unitCostSnapshot = round($product->supplier_cost_price * $conversionRate, 2);
                     $minSafePrice = round($unitCostSnapshot * 1.08, 2);
                 } else {
                     $unitSold = $product->unit_type;
                     $rawStockDeduction = $qty;
-                    $unitCostSnapshot = (float)$product->supplier_cost_price;
-                    $minSafePrice = (float)$product->minimum_safe_price;
+                    $unitCostSnapshot = (float) $product->supplier_cost_price;
+                    $minSafePrice = (float) $product->minimum_safe_price;
                 }
 
                 if ($product->stock_quantity < $rawStockDeduction) {
@@ -218,7 +222,7 @@ class PosController extends Controller
                 }
 
                 if ($negotiatedPrice < $minSafePrice) {
-                    throw new \Exception("Margin Guardrail Triggered: {$product->name} ({$unitSold}) cannot be sold below RM " . number_format($minSafePrice, 2) . " (Cost + 8%).");
+                    throw new \Exception("Margin Guardrail Triggered: {$product->name} ({$unitSold}) cannot be sold below RM ".number_format($minSafePrice, 2).' (Cost + 8%).');
                 }
 
                 $subtotal = round($negotiatedPrice * $qty, 2);
@@ -231,18 +235,18 @@ class PosController extends Controller
                     'unit_sold' => $unitSold,
                     'recorded_cost_price' => $unitCostSnapshot,
                     'unit_price' => $negotiatedPrice,
-                    'subtotal' => $subtotal
+                    'subtotal' => $subtotal,
                 ]);
 
                 $product->decrement('stock_quantity', $rawStockDeduction);
 
-                $invoiceItemsText .= "- {$product->name} ({$qty} {$unitSold}) @ RM" . number_format($negotiatedPrice, 2) . " = RM" . number_format($subtotal, 2) . "\n";
+                $invoiceItemsText .= "- {$product->name} ({$qty} {$unitSold}) @ RM".number_format($negotiatedPrice, 2).' = RM'.number_format($subtotal, 2)."\n";
             }
 
             if ($paymentStatus === 'CREDIT_HUTANG') {
                 $projectedDebt = $customer->current_debt + $totalAmount;
                 if ($projectedDebt > $customer->credit_limit) {
-                    throw new \Exception("HUTANG GATEKEEPER BLOCKED: Order total (RM " . number_format($totalAmount, 2) . ") pushes {$customer->name}'s debt to RM " . number_format($projectedDebt, 2) . ", exceeding their RM " . number_format($customer->credit_limit, 2) . " credit limit!");
+                    throw new \Exception('HUTANG GATEKEEPER BLOCKED: Order total (RM '.number_format($totalAmount, 2).") pushes {$customer->name}'s debt to RM ".number_format($projectedDebt, 2).', exceeding their RM '.number_format($customer->credit_limit, 2).' credit limit!');
                 }
                 $customer->increment('current_debt', $totalAmount);
             } elseif ($customer) {
@@ -255,19 +259,20 @@ class PosController extends Controller
             DB::commit();
 
             $targetChatId = $customTelegramChatId
-                ?: ($customer && !empty($customer->telegram_chat_id) ? $customer->telegram_chat_id : trim(env('TELEGRAM_CHAT_ID', '')));
+                ?: ($customer && ! empty($customer->telegram_chat_id) ? $customer->telegram_chat_id : trim((string) config('services.telegram.default_chat_id', '')));
 
             $order->load(['customer', 'user', 'items.product']);
             $tgSent = $this->dispatchTelegramInvoice($order, $customer, $invoiceItemsText, $targetChatId);
 
             $successMsg = $tgSent
                 ? "Order processed and PDF E-Invoice dispatched to Telegram (Chat ID: {$targetChatId})!"
-                : "Order processed successfully!";
+                : 'Order processed successfully!';
 
             return redirect()->route('invoice.show', $order->id)->with('success', $successMsg);
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return back()->with('error', $e->getMessage());
         }
     }
@@ -275,21 +280,22 @@ class PosController extends Controller
     public function sendTelegram(Request $request, $id)
     {
         $order = Order::with(['customer', 'user', 'items.product'])->findOrFail($id);
-        $chatId = trim($request->input('telegram_chat_id', ''))
-            ?: ($order->customer && !empty($order->customer->telegram_chat_id) ? $order->customer->telegram_chat_id : trim(env('TELEGRAM_CHAT_ID', '')));
+        $inputChatId = trim((string) $request->input('telegram_chat_id', ''));
+        $chatId = $inputChatId
+            ?: ($order->customer && ! empty($order->customer->telegram_chat_id) ? $order->customer->telegram_chat_id : trim((string) config('services.telegram.default_chat_id', '')));
 
         if (empty($chatId)) {
             return back()->with('error', 'Please enter a valid Customer Telegram Chat ID.');
         }
 
-        if ($order->customer && $order->customer->telegram_chat_id !== $chatId) {
-            $order->customer->update(['telegram_chat_id' => $chatId]);
+        if ($order->customer && $inputChatId !== '' && $order->customer->telegram_chat_id !== $inputChatId) {
+            $order->customer->update(['telegram_chat_id' => $inputChatId]);
         }
 
-        $invoiceItemsText = "";
+        $invoiceItemsText = '';
         foreach ($order->items as $item) {
             $prodName = $item->product->name ?? 'Hardware Item';
-            $invoiceItemsText .= "- {$prodName} ({$item->quantity} {$item->unit_sold}) @ RM" . number_format($item->unit_price, 2) . " = RM" . number_format($item->subtotal, 2) . "\n";
+            $invoiceItemsText .= "- {$prodName} ({$item->quantity} {$item->unit_sold}) @ RM".number_format($item->unit_price, 2).' = RM'.number_format($item->subtotal, 2)."\n";
         }
 
         $sent = $this->dispatchTelegramInvoice($order, $order->customer, $invoiceItemsText, $chatId);
@@ -303,7 +309,7 @@ class PosController extends Controller
 
     private function dispatchTelegramInvoice($order, $customer, $invoiceItemsText, $targetChatId)
     {
-        $telegramToken = trim(env('TELEGRAM_BOT_TOKEN', ''));
+        $telegramToken = trim((string) config('services.telegram.bot_token', ''));
 
         if (empty($telegramToken) || empty($targetChatId)) {
             return false;
@@ -311,16 +317,16 @@ class PosController extends Controller
 
         $invoiceNo = str_pad($order->id, 6, '0', STR_PAD_LEFT);
         $customerName = $customer ? $customer->name : 'Walk-in Customer';
-        $paymentLabel = $order->payment_status === 'CREDIT_HUTANG' ? 'CREDIT (HUTANG)' : 'PAID (' . $order->payment_method . ')';
+        $paymentLabel = $order->payment_status === 'CREDIT_HUTANG' ? 'CREDIT (HUTANG)' : 'PAID ('.$order->payment_method.')';
 
         $caption = "🧾 SME Hardware Hub - Official PDF E-Invoice\n"
-                 . "━━━━━━━━━━━━━━━━━━━━\n"
-                 . "📌 Invoice: #{$invoiceNo}\n"
-                 . "👤 Customer: {$customerName}\n"
-                 . "💳 Status: {$paymentLabel}\n"
-                 . "🚚 Fulfillment: {$order->delivery_type}\n"
-                 . "💰 Grand Total: RM " . number_format($order->total_amount, 2) . "\n\n"
-                 . "📄 Please find your official PDF E-Invoice attached.";
+                 ."━━━━━━━━━━━━━━━━━━━━\n"
+                 ."📌 Invoice: #{$invoiceNo}\n"
+                 ."👤 Customer: {$customerName}\n"
+                 ."💳 Status: {$paymentLabel}\n"
+                 ."🚚 Fulfillment: {$order->delivery_type}\n"
+                 .'💰 Grand Total: RM '.number_format($order->total_amount, 2)."\n\n"
+                 .'📄 Please find your official PDF E-Invoice attached.';
 
         try {
             // 1. Render PDF from Blade view and save to temporary file
@@ -330,11 +336,11 @@ class PosController extends Controller
             file_put_contents($tempFilePath, $pdf->output());
 
             // 2. Send PDF Document to Telegram via /sendDocument
-            $tgDocEndpoint = 'https://' . 'api.telegram.org/bot' . $telegramToken . '/sendDocument';
+            $tgDocEndpoint = 'https://'.'api.telegram.org/bot'.$telegramToken.'/sendDocument';
             $postFields = [
                 'chat_id' => $targetChatId,
                 'document' => new \CURLFile($tempFilePath, 'application/pdf', $fileName),
-                'caption' => $caption
+                'caption' => $caption,
             ];
 
             $chTg = curl_init($tgDocEndpoint);
@@ -356,7 +362,7 @@ class PosController extends Controller
                 @unlink($tempFilePath);
             }
 
-            return ($httpCode >= 200 && $httpCode < 300);
+            return $httpCode >= 200 && $httpCode < 300;
 
         } catch (\Exception $e) {
             return false;

@@ -143,7 +143,7 @@
         gap: 1rem;
     }
 
-    .ai-Mini-card {
+    .ai-mini-card {
         background-color: #F8FAFC;
         border: 1px solid #EEF2F6;
         border-radius: 16px;
@@ -362,12 +362,12 @@
                                 <div>
                                     <div class="fw-bold small">{{ $prod->name }}</div>
                                     <small class="text-muted" style="font-size: 0.74rem;">
-                                        SKU: {{ $prod->sku }} • Min: {{ $prod->low_stock_threshold }} {{ $prod->base_unit }}
+                                        SKU: {{ $prod->sku }} • Min: {{ $prod->low_stock_threshold }} {{ $prod->unit_type }}
                                     </small>
                                 </div>
                             </div>
                             <div class="text-end">
-                                <span class="fw-bold small text-danger d-block">{{ $prod->stock_quantity }} {{ $prod->base_unit }}</span>
+                                <span class="fw-bold small text-danger d-block">{{ $prod->stock_quantity }} {{ $prod->unit_type }}</span>
                                 <small class="text-muted" style="font-size: 0.7rem;">Remaining</small>
                             </div>
                         </div>

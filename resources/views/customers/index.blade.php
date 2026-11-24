@@ -300,12 +300,12 @@
                             <label class="form-label small fw-semibold">Email (Optional)</label>
                             <input type="email" name="email" class="form-control" placeholder="billing@company.com">
                         </div>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label small fw-semibold">
                             <i class="bi bi-telegram text-info me-1"></i>Telegram Chat ID (Optional - For Auto E-Invoice)
                         </label>
                         <input type="text" name="telegram_chat_id" class="form-control" placeholder="e.g. 819203948 (Customer sends /start to bot)">
-                    </div>
                     </div>
                     <div class="row g-2 mb-2">
                         <div class="col-7">
